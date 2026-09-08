@@ -16,6 +16,7 @@ import { ImageModelConfigDialog } from '../components/settings/ImageModelConfigD
 import { ImageModelSettingsTab } from '../components/settings/ImageModelSettingsTab'
 import { ModelConfigDialog } from '../components/settings/ModelConfigDialog'
 import { ModelSettingsTab } from '../components/settings/ModelSettingsTab'
+import { ExternalAgentSettingsTab } from '../components/settings/ExternalAgentSettingsTab'
 import {
   IMAGE_PROVIDER_OPTIONS,
   createDefaultImageModelConfig,
@@ -396,10 +397,7 @@ export function SettingsPage(): React.JSX.Element {
     setVerifyingImageModel(true)
     setVerificationMessage(null)
     try {
-      const valid = await verifyImageModel(
-        imageModelForm.provider,
-        modelConfig
-      )
+      const valid = await verifyImageModel(imageModelForm.provider, modelConfig)
       const verifyMessage = useSettingsStore.getState().verificationMessage
       if (valid) {
         success(t('settings.verifyPassed'), {
@@ -518,6 +516,7 @@ export function SettingsPage(): React.JSX.Element {
           <TabsTrigger value="model">{t('settings.modelTab')}</TabsTrigger>
           <TabsTrigger value="imageModel">{t('settings.imageModelTab')}</TabsTrigger>
           <TabsTrigger value="advanced">{t('settings.advancedTab')}</TabsTrigger>
+          <TabsTrigger value="agents">{t('settings.agentsTab')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -556,6 +555,10 @@ export function SettingsPage(): React.JSX.Element {
             onDelete={(config) => void handleDeleteImageModel(config)}
             onEdit={openEditImageModelDialog}
           />
+        </TabsContent>
+
+        <TabsContent value="agents">
+          <ExternalAgentSettingsTab t={t} />
         </TabsContent>
 
         <TabsContent value="advanced">
