@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, max } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNull, max } from 'drizzle-orm'
 import type { drizzle } from 'drizzle-orm/libsql'
 import { nanoid } from 'nanoid'
 import {
@@ -336,13 +336,15 @@ export class SqliteExternalAgentStore
       .run()
   }
 
-  async listQueued(sessionId: string): Promise<ExternalAgentOperationRecord[]> {
+  async listQueued(sessionId?: string): Promise<ExternalAgentOperationRecord[]> {
     const rows = await this.db
       .select()
       .from(schema.externalAgentOperations)
       .where(
         and(
-          eq(schema.externalAgentOperations.sessionId, sessionId),
+          sessionId
+            ? eq(schema.externalAgentOperations.sessionId, sessionId)
+            : isNull(schema.externalAgentOperations.sessionId),
           eq(schema.externalAgentOperations.status, 'queued')
         )
       )
@@ -351,21 +353,31 @@ export class SqliteExternalAgentStore
         asc(schema.externalAgentOperations.id)
       )
       .all()
-    return rows.map(mapOperation).filter((row): row is ExternalAgentOperationRecord => Boolean(row))
+    const mapped = rows
+      .map(mapOperation)
+      .filter((row): row is ExternalAgentOperationRecord => Boolean(row))
+    if (sessionId) return mapped
+    return mapped.filter((row) => !row.sessionId)
   }
 
-  async listRunning(sessionId: string): Promise<ExternalAgentOperationRecord[]> {
+  async listRunning(sessionId?: string): Promise<ExternalAgentOperationRecord[]> {
     const rows = await this.db
       .select()
       .from(schema.externalAgentOperations)
       .where(
         and(
-          eq(schema.externalAgentOperations.sessionId, sessionId),
+          sessionId
+            ? eq(schema.externalAgentOperations.sessionId, sessionId)
+            : isNull(schema.externalAgentOperations.sessionId),
           eq(schema.externalAgentOperations.status, 'running')
         )
       )
       .all()
-    return rows.map(mapOperation).filter((row): row is ExternalAgentOperationRecord => Boolean(row))
+    const mapped = rows
+      .map(mapOperation)
+      .filter((row): row is ExternalAgentOperationRecord => Boolean(row))
+    if (sessionId) return mapped
+    return mapped.filter((row) => !row.sessionId)
   }
 
   async listActiveByAgent(agentId: string): Promise<ExternalAgentOperationRecord[]> {

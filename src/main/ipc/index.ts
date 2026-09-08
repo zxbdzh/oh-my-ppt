@@ -184,14 +184,19 @@ export function setupIPC(
   )
   const store = new SqliteExternalAgentStore(db.orm)
   const operations = new ExternalAgentOperationService(store)
-  const product = createIpcProductRuntime({ jobManager, pageEditJobs, deckEditJobs })
-  const executor = new ExternalAgentRuntimeExecutor(operations, product)
+  const auth = new ExternalAgentAuthorizationService(store)
+  const product = createIpcProductRuntime({
+    jobManager,
+    pageEditJobs,
+    deckEditJobs,
+    ipcContext: context
+  })
+  const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
   runtimeEvents.subscribe({ domain: 'generation' }, (event) => {
     if (event.type !== 'generation.chunk' || !event.owner.sessionId) return
     // SAFETY: envelope generic does not narrow payload after the type check.
     executor.observeChunk(event.owner.sessionId, event.payload as GenerateChunkEvent)
   })
-  const auth = new ExternalAgentAuthorizationService(store)
   const broker = new ExternalAgentBroker(
     auth,
     createDatabaseBrokerDataSource(db),
@@ -203,7 +208,15 @@ export function setupIPC(
   registerExternalAgentHandlers({
     auth,
     operations,
-    executor
+    executor,
+    listSessions: async () => {
+      const sessions = await db.listSessions(50, 0)
+      return sessions.map((session) => ({ id: session.id, title: session.title || session.id }))
+    },
+    getStoragePath: async () => {
+      const saved = await db.getSetting<string>('storage_path')
+      return typeof saved === 'string' ? saved.trim() : db.getStoragePath()
+    }
   })
   void startBrokerHost(broker).catch((error) => {
     console.warn('[external-agent] failed to listen on local endpoint', {

@@ -79,11 +79,21 @@ export function registerExternalAgentHandlers(args: {
   auth: ExternalAgentAuthorizationService
   operations: ExternalAgentOperationService
   executor: ExternalAgentRuntimeExecutor
+  listSessions: () => Promise<Array<{ id: string; title: string }>>
+  getStoragePath: () => Promise<string>
 }): void {
   ipcMain.handle('external-agent:bridge-command', async () => {
     const exe = app.getPath('exe')
     const quoted = exe.includes(' ') ? `"${exe}"` : exe
     return { command: `${quoted} --mcp` }
+  })
+
+  ipcMain.handle('external-agent:auth-options', async () => {
+    const [sessions, storagePath] = await Promise.all([args.listSessions(), args.getStoragePath()])
+    return {
+      sessions,
+      defaultWorkspaceRoot: storagePath || ''
+    }
   })
 
   ipcMain.handle('external-agent:pending-auth', async () => {

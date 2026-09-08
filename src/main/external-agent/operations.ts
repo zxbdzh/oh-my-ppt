@@ -41,8 +41,8 @@ export interface ExternalAgentOperationStore {
     idempotencyKey: string
   ): Promise<ExternalAgentOperationRecord | null>
   saveOperation(record: ExternalAgentOperationRecord): Promise<void>
-  listQueued(sessionId: string): Promise<ExternalAgentOperationRecord[]>
-  listRunning(sessionId: string): Promise<ExternalAgentOperationRecord[]>
+  listQueued(sessionId?: string): Promise<ExternalAgentOperationRecord[]>
+  listRunning(sessionId?: string): Promise<ExternalAgentOperationRecord[]>
   listActiveByAgent(agentId: string): Promise<ExternalAgentOperationRecord[]>
   appendEvent(event: ExternalAgentEventRecord): Promise<void>
   listEvents(
@@ -75,15 +75,21 @@ export class InMemoryExternalAgentOperationStore implements ExternalAgentOperati
     this.operations.set(record.id, { ...record })
   }
 
-  async listQueued(sessionId: string): Promise<ExternalAgentOperationRecord[]> {
+  async listQueued(sessionId?: string): Promise<ExternalAgentOperationRecord[]> {
     return [...this.operations.values()]
-      .filter((record) => record.sessionId === sessionId && record.status === 'queued')
+      .filter(
+        (record) =>
+          record.status === 'queued' &&
+          (sessionId ? record.sessionId === sessionId : !record.sessionId)
+      )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   }
 
-  async listRunning(sessionId: string): Promise<ExternalAgentOperationRecord[]> {
+  async listRunning(sessionId?: string): Promise<ExternalAgentOperationRecord[]> {
     return [...this.operations.values()].filter(
-      (record) => record.sessionId === sessionId && record.status === 'running'
+      (record) =>
+        record.status === 'running' &&
+        (sessionId ? record.sessionId === sessionId : !record.sessionId)
     )
   }
 
@@ -253,6 +259,7 @@ export class ExternalAgentOperationService {
     progress?: number
     checkpoint?: string
     resultRef?: string
+    sessionId?: string
     errorCode?: ExternalAgentErrorCode
     resumable?: boolean
     eventType?: ExternalAgentEventType
@@ -269,6 +276,7 @@ export class ExternalAgentOperationService {
     if (current.status === args.to) {
       const patched: ExternalAgentOperationRecord = {
         ...current,
+        sessionId: args.sessionId ?? current.sessionId,
         progress: args.progress ?? current.progress,
         checkpoint: args.checkpoint ?? current.checkpoint,
         resultRef: args.resultRef ?? current.resultRef,
@@ -293,6 +301,7 @@ export class ExternalAgentOperationService {
     const next: ExternalAgentOperationRecord = {
       ...current,
       status: args.to,
+      sessionId: args.sessionId ?? current.sessionId,
       progress: args.progress ?? current.progress,
       checkpoint: args.checkpoint ?? current.checkpoint,
       resultRef: args.resultRef ?? current.resultRef,
@@ -309,16 +318,16 @@ export class ExternalAgentOperationService {
     return next
   }
 
-  listRunning(sessionId: string): Promise<ExternalAgentOperationRecord[]> {
+  listRunning(sessionId?: string): Promise<ExternalAgentOperationRecord[]> {
     return this.store.listRunning(sessionId)
   }
 
-  async peekQueued(sessionId: string): Promise<ExternalAgentOperationRecord | null> {
+  async peekQueued(sessionId?: string): Promise<ExternalAgentOperationRecord | null> {
     const queued = await this.store.listQueued(sessionId)
     return queued[0] ?? null
   }
 
-  async dequeueNext(sessionId: string): Promise<ExternalAgentOperationRecord | null> {
+  async dequeueNext(sessionId?: string): Promise<ExternalAgentOperationRecord | null> {
     const queued = await this.store.listQueued(sessionId)
     const next = queued[0]
     if (!next) return null
@@ -326,7 +335,7 @@ export class ExternalAgentOperationService {
       operationId: next.id,
       to: 'running',
       eventType: 'started',
-      payload: { sessionId }
+      payload: { sessionId: sessionId || null }
     })
     return 'id' in started ? started : null
   }

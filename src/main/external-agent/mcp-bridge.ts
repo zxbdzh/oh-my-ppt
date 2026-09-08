@@ -64,13 +64,14 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     description: '在已授权工作区下创建新 Session（存储目录仍由系统管理）',
     inputSchema: {
       type: 'object',
-      required: ['idempotencyKey', 'title', 'workspaceRootPath'],
+      required: ['idempotencyKey', 'title'],
       properties: {
         idempotencyKey: { type: 'string' },
         title: { type: 'string' },
         topic: { type: 'string' },
         styleId: { type: 'string' },
         slideSizeId: { type: 'string' },
+        pageCount: { type: 'integer', minimum: 1, maximum: 30 },
         workspaceRootPath: { type: 'string' }
       },
       additionalProperties: false
