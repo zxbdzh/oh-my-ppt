@@ -359,7 +359,8 @@ export const createSessionInputSchema = z.strictObject({
   topic: z.string().trim().max(500).optional(),
   styleId: trimmedIdSchema.optional(),
   slideSizeId: z.string().trim().min(1).max(50).optional(),
-  workspaceRootPath: z.string().trim().min(1).max(1_000)
+  pageCount: z.number().int().min(1).max(30).optional(),
+  workspaceRootPath: z.string().trim().min(1).max(1_000).optional()
 })
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>
 

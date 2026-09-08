@@ -236,6 +236,7 @@ export type NormalizedGenerateInput = {
   autoApply: boolean
   approvedPlan?: SessionPageEditPlan
   failedRunId?: string
+  pageCount?: number
 }
 
 const MAX_SELECTED_ELEMENT_CONTEXT_ENTRIES = 40
@@ -245,7 +246,10 @@ const PROMPT_SAFE_COMPUTED_STYLE_PROPERTIES = new Set<string>(
   SELECTED_ELEMENT_CONTEXT_COMPUTED_STYLE_PROPERTIES
 )
 
-const normalizeSelectedElementContextValue = (value: unknown, maxLength = MAX_SELECTED_ELEMENT_CONTEXT_VALUE_LENGTH): string =>
+const normalizeSelectedElementContextValue = (
+  value: unknown,
+  maxLength = MAX_SELECTED_ELEMENT_CONTEXT_VALUE_LENGTH
+): string =>
   String(value ?? '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -268,7 +272,11 @@ export function normalizeSelectedElementRuntimeContext(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const input = value as Record<string, unknown>
   const attributes: Record<string, string> = {}
-  if (input.attributes && typeof input.attributes === 'object' && !Array.isArray(input.attributes)) {
+  if (
+    input.attributes &&
+    typeof input.attributes === 'object' &&
+    !Array.isArray(input.attributes)
+  ) {
     for (const [key, rawValue] of Object.entries(input.attributes)) {
       if (Object.keys(attributes).length >= MAX_SELECTED_ELEMENT_CONTEXT_ENTRIES) break
       const name = normalizeSelectedElementContextValue(key, 100).toLowerCase()
@@ -278,7 +286,11 @@ export function normalizeSelectedElementRuntimeContext(
   }
 
   const inlineStyle: NonNullable<SelectedElementRuntimeContext['inlineStyle']> = {}
-  if (input.inlineStyle && typeof input.inlineStyle === 'object' && !Array.isArray(input.inlineStyle)) {
+  if (
+    input.inlineStyle &&
+    typeof input.inlineStyle === 'object' &&
+    !Array.isArray(input.inlineStyle)
+  ) {
     for (const [key, rawDeclaration] of Object.entries(input.inlineStyle)) {
       if (Object.keys(inlineStyle).length >= MAX_SELECTED_ELEMENT_CONTEXT_ENTRIES) break
       const property = normalizeSelectedElementContextValue(key, 100).toLowerCase()
@@ -296,7 +308,11 @@ export function normalizeSelectedElementRuntimeContext(
   }
 
   const computedStyle: Record<string, string> = {}
-  if (input.computedStyle && typeof input.computedStyle === 'object' && !Array.isArray(input.computedStyle)) {
+  if (
+    input.computedStyle &&
+    typeof input.computedStyle === 'object' &&
+    !Array.isArray(input.computedStyle)
+  ) {
     for (const [key, rawValue] of Object.entries(input.computedStyle)) {
       const property = normalizeSelectedElementContextValue(key, 100).toLowerCase()
       if (!PROMPT_SAFE_COMPUTED_STYLE_PROPERTIES.has(property)) continue
@@ -383,12 +399,11 @@ export function normalizeGeneratePayload(payload: unknown): NormalizedGenerateIn
   const persistUserMessage = input?.persistUserMessage !== false
   const rawClientMessageId =
     typeof input?.clientMessageId === 'string' ? input.clientMessageId.trim() : ''
-  const clientMessageId =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      rawClientMessageId
-    )
-      ? rawClientMessageId
-      : undefined
+  const clientMessageId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    rawClientMessageId
+  )
+    ? rawClientMessageId
+    : undefined
   const selectedPageId =
     typeof input?.selectedPageId === 'string' && input.selectedPageId.trim().length > 0
       ? input.selectedPageId.trim()
@@ -415,7 +430,9 @@ export function normalizeGeneratePayload(payload: unknown): NormalizedGenerateIn
     : undefined
   const chatType: GenerateChatType = input?.chatType === 'page' ? 'page' : 'main'
   const chatPageId =
-    chatType === 'page' && typeof input?.chatPageId === 'string' && input.chatPageId.trim().length > 0
+    chatType === 'page' &&
+    typeof input?.chatPageId === 'string' &&
+    input.chatPageId.trim().length > 0
       ? input.chatPageId.trim()
       : undefined
   const animationPreferences = normalizeAnimationPreferences(input?.animationPreferences)
@@ -425,6 +442,11 @@ export function normalizeGeneratePayload(payload: unknown): NormalizedGenerateIn
   const failedRunId =
     typeof failedRunIdRaw === 'string' && failedRunIdRaw.trim().length > 0
       ? failedRunIdRaw.trim()
+      : undefined
+  const rawPageCount = input?.pageCount
+  const pageCount =
+    typeof rawPageCount === 'number' && Number.isFinite(rawPageCount)
+      ? Math.max(1, Math.min(30, Math.floor(rawPageCount)))
       : undefined
 
   return {
@@ -450,7 +472,8 @@ export function normalizeGeneratePayload(payload: unknown): NormalizedGenerateIn
     animationPreferences,
     autoApply,
     approvedPlan,
-    failedRunId
+    failedRunId,
+    pageCount
   }
 }
 
@@ -470,7 +493,15 @@ export function buildRetryUserMessage(retrySupplementRaw: string): string {
       ].join('\n')
 }
 
-export function buildTotalPages(sessionRecord: Record<string, unknown>): number {
+export function buildTotalPages(
+  sessionRecord: Record<string, unknown>,
+  requestedPageCount?: number
+): number {
+  const requested =
+    typeof requestedPageCount === 'number' && Number.isFinite(requestedPageCount)
+      ? Math.floor(requestedPageCount)
+      : 0
+  if (requested >= 1) return requested
   const total = Number(sessionRecord.page_count ?? sessionRecord.pageCount)
   return Math.max(1, Number.isFinite(total) ? Math.floor(total) : 1)
 }

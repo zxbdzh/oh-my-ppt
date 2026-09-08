@@ -1,4 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { ExternalAgentBroker } from '../../../src/main/external-agent/broker'
 import {
   ExternalAgentAuthorizationService,
@@ -130,11 +133,13 @@ describe('ExternalAgentBroker write and recovery flow', () => {
   })
 
   it('creates confirmation operations for delete and overwrite export', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-export-'))
     await authService.grantInitial({
       agentId: 'pi',
       name: 'pi',
       version: '1.0.0',
-      sessionIds: ['sess-1']
+      sessionIds: ['sess-1'],
+      workspaceRoots: [workspace]
     })
     const deleted = await broker.handleRequest('pi', {
       type: 'delete_session',
@@ -149,12 +154,50 @@ describe('ExternalAgentBroker write and recovery flow', () => {
       input: {
         idempotencyKey: 'exp-1',
         sessionId: 'sess-1',
-        outputPath: 'F:\\out\\deck.pptx',
+        outputPath: path.join(workspace, 'deck.pptx'),
         overwrite: true
       }
     })
     expect(exported.ok).toBe(true)
     if (exported.ok)
       expect((exported.data as { status: string }).status).toBe('awaiting_confirmation')
+  })
+
+  it('rejects create_session when the workspace root is not granted', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-workspace-'))
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-other-'))
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      workspaceRoots: [workspace]
+    })
+    const created = await broker.handleRequest('pi', {
+      type: 'create_session',
+      input: {
+        idempotencyKey: 'create-denied',
+        title: '新演示',
+        workspaceRootPath: other
+      }
+    })
+    expect(created.ok).toBe(false)
+    if (!created.ok) expect(created.error.code).toBe('PATH_OUTSIDE_AUTHORIZED_ROOT')
+  })
+
+  it('allows create_session without a granted workspace when the path is omitted', async () => {
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0'
+    })
+    const created = await broker.handleRequest('pi', {
+      type: 'create_session',
+      input: {
+        idempotencyKey: 'create-no-workspace',
+        title: '新演示'
+      }
+    })
+    expect(created.ok).toBe(true)
+    if (created.ok) expect((created.data as { status: string }).status).toBe('queued')
   })
 })

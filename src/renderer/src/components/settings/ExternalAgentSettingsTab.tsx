@@ -36,8 +36,12 @@ export function ExternalAgentSettingsTab({ t }: ExternalAgentSettingsTabProps): 
       await load(active)
     }
     void loadAgents()
+    const timer = window.setInterval(() => {
+      void load(active)
+    }, 2000)
     return () => {
       active = false
+      window.clearInterval(timer)
     }
   }, [])
 

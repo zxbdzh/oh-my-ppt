@@ -5,18 +5,28 @@ import type { DeckEditJobService } from '../edit-jobs/deck-edit-job-service'
 import { resolveDeckContext, executeDeckGeneration } from '../generation/deck-flow'
 import { createEmitAssistantMessage } from '../generation/generation-utils'
 import { finalizeGenerationFailure } from '../generation/finalization'
+import { createProductSession } from '../session/create-session'
+import type { IpcContext } from '../ipc/context'
 
 export type ExternalAgentProductStartResult = {
   success: boolean
   runId?: string
   queued?: boolean
   alreadyRunning?: boolean
+  sessionId?: string
 }
 
 export interface ExternalAgentProductRuntime {
   startGeneration(payload: GenerateStartPayload): Promise<ExternalAgentProductStartResult>
   startPageEdit(payload: GenerateStartPayload): Promise<ExternalAgentProductStartResult>
   startDeckEdit(payload: GenerateStartPayload): Promise<ExternalAgentProductStartResult>
+  createSession(payload: {
+    title?: string
+    topic?: string
+    styleId?: string
+    slideSizeId?: string
+    pageCount?: number
+  }): Promise<ExternalAgentProductStartResult>
   cancelSession(sessionId: string): Promise<boolean>
 }
 
@@ -27,11 +37,24 @@ export function createIpcProductRuntime(args: {
   jobManager: GenerateJobManager
   pageEditJobs: PageEditJobService
   deckEditJobs: DeckEditJobService
+  ipcContext: Pick<
+    IpcContext,
+    | 'db'
+    | 'agentManager'
+    | 'resolveStoragePath'
+    | 'ensureSessionAssets'
+    | 'modelRuntime'
+    | 'decryptApiKey'
+  >
 }): ExternalAgentProductRuntime {
   return {
     startGeneration: (payload) => startGenerationViaJobManager(args.jobManager, payload),
     startPageEdit: (payload) => args.pageEditJobs.start(unusedIpcEvent, payload),
     startDeckEdit: (payload) => args.deckEditJobs.start(unusedIpcEvent, payload),
+    createSession: async (payload) => {
+      const created = await createProductSession(args.ipcContext, payload)
+      return { success: true, sessionId: created.sessionId, runId: created.sessionId }
+    },
     cancelSession: async (sessionId) => {
       if (await args.pageEditJobs.cancel(sessionId)) return true
       if (await args.deckEditJobs.cancel(sessionId)) return true

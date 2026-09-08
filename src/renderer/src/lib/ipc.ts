@@ -87,6 +87,11 @@ export interface ExternalAgentAuthRequest {
   defaultCapabilities: ExternalAgentCapability[]
 }
 
+export interface ExternalAgentAuthOptions {
+  sessions: Array<{ id: string; title: string }>
+  defaultWorkspaceRoot: string
+}
+
 export interface StyleCategory {
   name: string
   styles: Array<{
@@ -1119,6 +1124,8 @@ export const ipc = {
     getIpc().invoke('external-agent:bridge-command') as Promise<{ command: string }>,
   getPendingExternalAgentAuth: () =>
     getIpc().invoke('external-agent:pending-auth') as Promise<ExternalAgentAuthRequest | null>,
+  getExternalAgentAuthOptions: () =>
+    getIpc().invoke('external-agent:auth-options') as Promise<ExternalAgentAuthOptions>,
   listExternalAgents: () =>
     getIpc().invoke('external-agent:list') as Promise<ExternalAgentSummary[]>,
   revokeExternalAgent: (agentId: string) =>

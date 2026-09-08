@@ -71,6 +71,12 @@ describe('external agent shared contract', () => {
       unexpectedParam: 'danger'
     })
     expect(extraField.success).toBe(false)
+
+    const withoutWorkspace = createSessionInputSchema.safeParse({
+      idempotencyKey: 'agent-run:create_2',
+      title: '产品季报'
+    })
+    expect(withoutWorkspace.success).toBe(true)
   })
 
   it('validates file tool inputs and controlled relative asset paths', () => {

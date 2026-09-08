@@ -16,7 +16,7 @@ import {
   type InitializeOutput,
   type ListSessionsOutput
 } from '@shared/external-agent'
-import type { ExternalAgentAuthorizationService } from './authorization'
+import { validateSafePath, type ExternalAgentAuthorizationService } from './authorization'
 import { computeRequestHash } from './idempotency'
 import { toOperationSummary, type ExternalAgentOperationService } from './operations'
 import type { ExternalAgentRuntimeExecutor } from './runtime-executor'
@@ -352,6 +352,8 @@ export class ExternalAgentBroker {
           createExternalAgentError({ code: 'AUTH_REQUIRED', message: '需要授权后才能调用该工具' })
       )
     }
+    const workspaceError = this.assertWorkspaceAccess(request, access.grant?.workspaceRoots ?? [])
+    if (workspaceError) return fail(workspaceError)
 
     if (request.type === 'get_operation') {
       return this.readOperation(agentId, request.input.operationId)
@@ -431,6 +433,56 @@ export class ExternalAgentBroker {
       data: toOperationSummary(record),
       operationId: record.id
     }
+  }
+
+  private assertWorkspaceAccess(
+    request: ExternalAgentBrokerRequest,
+    workspaceRoots: string[]
+  ): ExternalAgentErrorPayload | null {
+    const targets: Array<{ path: string; mustExist: boolean; allowMissingLeaf?: boolean }> = []
+    if (request.type === 'create_session') {
+      if (request.input.workspaceRootPath) {
+        if (workspaceRoots.length === 0) return null
+        targets.push({ path: request.input.workspaceRootPath, mustExist: false })
+      }
+    } else if (request.type === 'import_pptx') {
+      targets.push({ path: request.input.sourcePath, mustExist: true })
+    } else if (request.type === 'import_assets') {
+      for (const source of request.input.sources) {
+        targets.push({ path: source.sourcePath, mustExist: true })
+      }
+    } else if (request.type === 'export_pptx') {
+      targets.push({
+        path: request.input.outputPath,
+        mustExist: false,
+        allowMissingLeaf: true
+      })
+    }
+    if (targets.length === 0) return null
+    if (workspaceRoots.length === 0) {
+      return createExternalAgentError({
+        code: 'WORKSPACE_NOT_GRANTED',
+        message: '该 Agent 尚未授权工作区根目录'
+      })
+    }
+    for (const target of targets) {
+      const check = validateSafePath({
+        targetPath: target.path,
+        authorizedRoots: workspaceRoots,
+        mustExist: target.mustExist,
+        allowMissingLeaf: target.allowMissingLeaf
+      })
+      if (!check.ok) {
+        return (
+          check.error ??
+          createExternalAgentError({
+            code: 'PATH_OUTSIDE_AUTHORIZED_ROOT',
+            message: '路径不在授权工作区根目录范围内'
+          })
+        )
+      }
+    }
+    return null
   }
 
   private sessionIdOf(request: ExternalAgentBrokerRequest): string | undefined {

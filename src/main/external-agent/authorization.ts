@@ -277,6 +277,10 @@ export class ExternalAgentAuthorizationService {
       }
     }
 
+    if (capability === 'create_session') {
+      return { authorized: true, grant }
+    }
+
     if (sessionId && !grant.sessionIds.includes(sessionId)) {
       return {
         authorized: false,

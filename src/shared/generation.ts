@@ -257,6 +257,7 @@ export interface GenerateStartPayload {
   sessionId: string
   modelConfigId?: string
   userMessage: string
+  pageCount?: number
   type?: 'deck' | 'page'
   chatType?: 'main' | 'page'
   resetVisualStyle?: boolean

@@ -1,5 +1,6 @@
 import type { GenerateStartPayload } from '@shared/generation'
 import type {
+  CreateSessionInput,
   EditDeckInput,
   EditPageInput,
   ExternalAgentBrokerRequest,
@@ -8,23 +9,29 @@ import type {
 import type { ExternalAgentOperationRecord, ExternalAgentOperationService } from './operations'
 import { mapGenerateChunkToExternalEvent } from './event-map'
 import type { ExternalAgentProductRuntime } from './product-runtime'
+import type { ExternalAgentAuthorizationService } from './authorization'
 
-const EXECUTABLE_TOOLS = new Set(['start_generation', 'edit_page', 'edit_deck'])
+const EXECUTABLE_TOOLS = new Set(['create_session', 'start_generation', 'edit_page', 'edit_deck'])
 
 export class ExternalAgentRuntimeExecutor {
   private drains = new Map<string, Promise<void>>()
 
   constructor(
     private operations: ExternalAgentOperationService,
-    private product: ExternalAgentProductRuntime
+    private product: ExternalAgentProductRuntime,
+    private auth?: ExternalAgentAuthorizationService
   ) {}
 
   kick(sessionId?: string): Promise<void> {
-    if (!sessionId) return Promise.resolve()
-    const existing = this.drains.get(sessionId)
+    if (sessionId) return this.drainKeyed(sessionId)
+    return this.drainKeyed('')
+  }
+
+  private drainKeyed(key: string): Promise<void> {
+    const existing = this.drains.get(key)
     if (existing) return existing
-    const drain = this.drain(sessionId).finally(() => this.drains.delete(sessionId))
-    this.drains.set(sessionId, drain)
+    const drain = this.drain(key).finally(() => this.drains.delete(key))
+    this.drains.set(key, drain)
     return drain
   }
 
@@ -37,7 +44,16 @@ export class ExternalAgentRuntimeExecutor {
       const running = await this.operations.listRunning(sessionId)
       if (running.length > 0) return
       const next = await this.operations.peekQueued(sessionId)
-      if (!next || !EXECUTABLE_TOOLS.has(next.toolName)) return
+      if (!next) return
+      if (!EXECUTABLE_TOOLS.has(next.toolName)) {
+        await this.operations.transition({
+          operationId: next.id,
+          to: 'failed',
+          errorCode: 'VALIDATION_FAILED',
+          payload: { message: `工具暂未接通: ${next.toolName}` }
+        })
+        continue
+      }
       const started = await this.operations.dequeueNext(sessionId)
       if (!started) return
       try {
@@ -57,6 +73,29 @@ export class ExternalAgentRuntimeExecutor {
   }
 
   private async execute(record: ExternalAgentOperationRecord): Promise<boolean> {
+    if (record.toolName === 'create_session') {
+      const input = this.toCreateSessionInput(record)
+      const result = await this.product.createSession({
+        title: input.title,
+        topic: input.topic,
+        styleId: input.styleId,
+        slideSizeId: input.slideSizeId,
+        pageCount: input.pageCount
+      })
+      if (!result.sessionId) throw new Error('创建 Session 未返回 sessionId')
+      await this.auth?.attachSession(record.agentId, result.sessionId)
+      await this.operations.transition({
+        operationId: record.id,
+        to: 'completed',
+        progress: 100,
+        sessionId: result.sessionId,
+        resultRef: result.sessionId,
+        eventType: 'completed',
+        payload: { sessionId: result.sessionId }
+      })
+      return false
+    }
+
     const payload = this.toGeneratePayload(record)
     const result =
       record.toolName === 'start_generation'
@@ -146,6 +185,7 @@ export class ExternalAgentRuntimeExecutor {
       return {
         sessionId: input.sessionId,
         userMessage: [input.topic, input.prompt].filter(Boolean).join('\n\n'),
+        pageCount: input.pageCount,
         type: 'deck',
         chatType: 'main',
         imagePaths,
@@ -181,5 +221,24 @@ export class ExternalAgentRuntimeExecutor {
       }
     }
     throw new Error(`不支持执行工具: ${record.toolName}`)
+  }
+
+  private parseRequest(record: ExternalAgentOperationRecord): ExternalAgentBrokerRequest {
+    if (!record.requestJson) throw new Error('operation 缺少可执行请求')
+    try {
+      const parsed = JSON.parse(record.requestJson) as ExternalAgentBrokerRequest
+      if (!parsed || typeof parsed !== 'object' || !('input' in parsed)) {
+        throw new Error('operation 缺少可执行请求')
+      }
+      return parsed
+    } catch {
+      throw new Error('operation 缺少可执行请求')
+    }
+  }
+
+  private toCreateSessionInput(record: ExternalAgentOperationRecord): CreateSessionInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'create_session') throw new Error('operation 不是 create_session')
+    return parsed.input
   }
 }
