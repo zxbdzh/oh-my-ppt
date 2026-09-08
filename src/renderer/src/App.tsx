@@ -19,6 +19,7 @@ import { EditHtmlPage } from './pages/edit-html'
 import { EditHtmlListPage } from './pages/edit-html-list'
 import { AppToaster } from './components/AppToaster'
 import { UpdateAvailableDialog } from './components/UpdateAvailableDialog'
+import { ExternalAgentAuthDialog } from './components/ExternalAgentAuthDialog'
 import { ScrollArea } from './components/ui/ScrollArea'
 import { ipc } from './lib/ipc'
 import type { UpdateAvailablePayload } from '@shared/app-update.js'
@@ -46,7 +47,10 @@ function App(): React.JSX.Element {
       <>
         <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
           <Routes>
-            <Route path="/sessions/:id/template-generating" element={<TemplateSessionsGeneratingPage />} />
+            <Route
+              path="/sessions/:id/template-generating"
+              element={<TemplateSessionsGeneratingPage />}
+            />
             <Route path="/sessions/:id/generating" element={<SessionGeneratingPage />} />
             <Route path="/sessions/:id" element={<SessionDetailPage />} />
             <Route path="/edit-html/:id" element={<EditHtmlPage />} />
@@ -54,6 +58,7 @@ function App(): React.JSX.Element {
           </Routes>
         </div>
         <UpdateAvailableDialog update={availableUpdate} onClose={() => setAvailableUpdate(null)} />
+        <ExternalAgentAuthDialog />
         <AppToaster />
       </>
     )
@@ -100,6 +105,7 @@ function App(): React.JSX.Element {
         </div>
       </div>
       <UpdateAvailableDialog update={availableUpdate} onClose={() => setAvailableUpdate(null)} />
+      <ExternalAgentAuthDialog />
       <AppToaster />
     </>
   )

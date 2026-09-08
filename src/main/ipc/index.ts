@@ -1,6 +1,7 @@
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import type { GenerateChunkEvent } from '@shared/generation'
 import type { PPTDatabase } from '../db/database'
 import type { AgentManager } from '../agent-runtime/agent'
 import { createIpcContext } from './context'
@@ -42,6 +43,18 @@ import { registerDeckEditJobHandlers } from '../edit-jobs/deck-edit-job-service'
 import { registerPageEditJobHandlers } from '../edit-jobs/page-edit-job-service'
 import { registerStyleSwitchJobHandlers } from '../edit-jobs/style-switch-job-service'
 import { registerMasterHandlers } from '../session/master-handlers'
+import { ExternalAgentAuthorizationService } from '../external-agent/authorization'
+import { ExternalAgentBroker } from '../external-agent/broker'
+import { ExternalAgentOperationService } from '../external-agent/operations'
+import { createIpcProductRuntime } from '../external-agent/product-runtime'
+import { ExternalAgentRuntimeExecutor } from '../external-agent/runtime-executor'
+import { createDatabaseBrokerDataSource } from '../external-agent/session-source'
+import { SqliteExternalAgentStore } from '../external-agent/sqlite-store'
+import {
+  createRendererAuthPrompt,
+  registerExternalAgentHandlers,
+  startBrokerHost
+} from '../external-agent/handlers'
 
 export { registerLocalAssetProtocol }
 
@@ -162,13 +175,41 @@ export function setupIPC(
   const pageEditJobs = registerPageEditJobHandlers(context, jobCoordinator)
   const deckEditJobs = registerDeckEditJobHandlers(context, jobCoordinator)
   const styleSwitchJobs = registerStyleSwitchJobHandlers(context, jobCoordinator)
-  registerGenerationHandlers(
+  const jobManager = registerGenerationHandlers(
     generationContext,
     jobCoordinator,
     styleSwitchJobs,
     pageEditJobs,
     deckEditJobs
   )
+  const store = new SqliteExternalAgentStore(db.orm)
+  const operations = new ExternalAgentOperationService(store)
+  const product = createIpcProductRuntime({ jobManager, pageEditJobs, deckEditJobs })
+  const executor = new ExternalAgentRuntimeExecutor(operations, product)
+  runtimeEvents.subscribe({ domain: 'generation' }, (event) => {
+    if (event.type !== 'generation.chunk' || !event.owner.sessionId) return
+    // SAFETY: envelope generic does not narrow payload after the type check.
+    executor.observeChunk(event.owner.sessionId, event.payload as GenerateChunkEvent)
+  })
+  const auth = new ExternalAgentAuthorizationService(store)
+  const broker = new ExternalAgentBroker(
+    auth,
+    createDatabaseBrokerDataSource(db),
+    app.getVersion(),
+    operations,
+    executor,
+    createRendererAuthPrompt(() => mainWindow)
+  )
+  registerExternalAgentHandlers({
+    auth,
+    operations,
+    executor
+  })
+  void startBrokerHost(broker).catch((error) => {
+    console.warn('[external-agent] failed to listen on local endpoint', {
+      message: error instanceof Error ? error.message : String(error)
+    })
+  })
   registerExportHandlers(context)
   registerStyleHandlers(context)
   registerStylePreviewHandlers(context)

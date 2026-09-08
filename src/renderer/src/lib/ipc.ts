@@ -50,6 +50,7 @@ import type { ExportProgressPayload } from '@shared/export-progress.js'
 import type { PageMergeDisabledReason } from '@shared/page-merge'
 import type { ModelUsagePeriod, ModelUsageStats } from '@shared/model-usage'
 import type { SlideSizePresetId } from '@shared/slide-size'
+import type { ExternalAgentCapability } from '@shared/external-agent'
 import type { ParsedChartDataResult } from '@shared/chart-data'
 import type { SessionMasterConfig, SessionMasterStatus } from '@shared/master'
 import type { SessionLayoutLibrary, SessionLayoutLibraryStatus } from '@shared/layout-master'
@@ -63,6 +64,28 @@ function getIpc(): IpcRendererLike {
     throw new Error(`Electron preload IPC is unavailable. window.electron keys: ${electronKeys}`)
   }
   return ipc
+}
+
+export interface ExternalAgentSummary {
+  id: string
+  name: string
+  version: string
+  executablePath?: string
+  capabilities: ExternalAgentCapability[]
+  sessionIds: string[]
+  workspaceRoots: string[]
+  createdAt: string
+  lastUsedAt?: string | null
+  revokedAt?: string | null
+  connected: boolean
+}
+
+export interface ExternalAgentAuthRequest {
+  agentId: string
+  name: string
+  version: string
+  executablePath?: string
+  defaultCapabilities: ExternalAgentCapability[]
 }
 
 export interface StyleCategory {
@@ -1114,6 +1137,30 @@ export const ipc = {
     return () => getIpc().removeListener(channel, handler)
   },
   getSettings: () => getIpc().invoke('settings:get') as Promise<Record<string, unknown>>,
+  getExternalAgentBridgeCommand: () =>
+    getIpc().invoke('external-agent:bridge-command') as Promise<{ command: string }>,
+  getPendingExternalAgentAuth: () =>
+    getIpc().invoke('external-agent:pending-auth') as Promise<ExternalAgentAuthRequest | null>,
+  listExternalAgents: () =>
+    getIpc().invoke('external-agent:list') as Promise<ExternalAgentSummary[]>,
+  revokeExternalAgent: (agentId: string) =>
+    getIpc().invoke('external-agent:revoke', agentId) as Promise<{ success: boolean }>,
+  respondExternalAgentAuth: (payload: {
+    agentId: string
+    approved: boolean
+    capabilities?: ExternalAgentCapability[]
+    sessionIds?: string[]
+    workspaceRoots?: string[]
+  }) => getIpc().invoke('external-agent:auth-respond', payload) as Promise<{ success: boolean }>,
+  onExternalAgentAuthRequest: (
+    callback: (payload: ExternalAgentAuthRequest) => void
+  ): (() => void) => {
+    const channel = 'external-agent:auth-request'
+    const handler = (_event: unknown, payload: unknown): void =>
+      callback(payload as ExternalAgentAuthRequest)
+    getIpc().on(channel, handler)
+    return () => getIpc().removeListener(channel, handler)
+  },
   getModelUsage: (period: ModelUsagePeriod) =>
     getIpc().invoke('settings:getModelUsage', period) as Promise<ModelUsageStats>,
   listModelConfigs: () => getIpc().invoke('settings:listModelConfigs') as Promise<ModelConfig[]>,
