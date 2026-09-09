@@ -1,16 +1,28 @@
+import path from 'path'
+
 export function resolveMcpLaunch(input: {
   executable: string
   packaged: boolean
   entry?: string
+  appPath?: string
+  nodeExecutable?: string
 }): { executable: string; args: string[]; command: string; packaged: boolean } {
-  const entry =
-    !input.packaged && input.entry && !input.entry.startsWith('-') ? input.entry : undefined
-  const args = entry ? [entry, '--mcp'] : ['--mcp']
+  if (input.packaged) {
+    return {
+      executable: input.executable,
+      args: ['--mcp'],
+      command: [input.executable, '--mcp'].map(quoteCliArg).join(' '),
+      packaged: true
+    }
+  }
+  const appPath = input.appPath ? path.resolve(input.appPath) : process.cwd()
+  const executable = input.nodeExecutable || 'node'
+  const args = [path.join(appPath, 'scripts/oh-my-ppt-mcp.mjs')]
   return {
-    executable: input.executable,
+    executable,
     args,
-    command: [input.executable, ...args].map(quoteCliArg).join(' '),
-    packaged: input.packaged
+    command: [executable, ...args].map(quoteCliArg).join(' '),
+    packaged: false
   }
 }
 

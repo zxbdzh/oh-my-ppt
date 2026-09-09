@@ -180,6 +180,7 @@ export function ExternalAgentSettingsTab({ t }: ExternalAgentSettingsTabProps): 
               </p>
             </div>
           ) : null}
+          <McpHowTo t={t} />
         </CardContent>
       </Card>
 
@@ -206,6 +207,58 @@ export function ExternalAgentSettingsTab({ t }: ExternalAgentSettingsTabProps): 
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function McpHowTo({ t }: { t: SettingsTranslate }): React.JSX.Element {
+  const clients = [
+    {
+      title: t('settings.externalAgentHowToClaudeCode'),
+      steps: [
+        t('settings.externalAgentHowToClaudeCode1'),
+        t('settings.externalAgentHowToClaudeCode2'),
+        t('settings.externalAgentHowToClaudeCode3')
+      ]
+    },
+    {
+      title: t('settings.externalAgentHowToCursor'),
+      steps: [
+        t('settings.externalAgentHowToCursor1'),
+        t('settings.externalAgentHowToCursor2'),
+        t('settings.externalAgentHowToCursor3')
+      ]
+    },
+    {
+      title: t('settings.externalAgentHowToDesktop'),
+      steps: [
+        t('settings.externalAgentHowToDesktop1'),
+        t('settings.externalAgentHowToDesktop2'),
+        t('settings.externalAgentHowToDesktop3')
+      ]
+    }
+  ]
+
+  return (
+    <div className="space-y-3 rounded-lg border border-[#d8ccb5]/80 bg-[#fff9ef]/70 p-3">
+      <div>
+        <p className="text-xs font-medium text-[#33402a]">
+          {t('settings.externalAgentHowToTitle')}
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {t('settings.externalAgentHowToIntro')}
+        </p>
+      </div>
+      {clients.map((client) => (
+        <div key={client.title}>
+          <p className="text-xs font-medium text-[#4a5a3d]">{client.title}</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-4 text-[11px] leading-5 text-muted-foreground">
+            {client.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      ))}
     </div>
   )
 }

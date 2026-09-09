@@ -113,7 +113,8 @@ export function registerExternalAgentHandlers(args: {
     return resolveMcpLaunch({
       executable: app.getPath('exe'),
       packaged: app.isPackaged,
-      entry: process.argv[1]
+      appPath: app.getAppPath(),
+      nodeExecutable: 'node'
     })
   })
 

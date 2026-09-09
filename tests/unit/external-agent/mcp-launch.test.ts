@@ -17,17 +17,28 @@ describe('resolveMcpLaunch', () => {
     })
   })
 
-  it('dev launch includes the current main entry', () => {
+  it('dev launch defaults to node on PATH', () => {
     expect(
       resolveMcpLaunch({
         executable: 'C:\\electron.exe',
         packaged: false,
-        entry: 'F:\\github\\oh-my-ppt\\out\\main\\index.js'
+        appPath: 'F:\\github\\oh-my-ppt'
+      }).executable
+    ).toBe('node')
+  })
+
+  it('dev launch uses the node stdout wrapper', () => {
+    expect(
+      resolveMcpLaunch({
+        executable: 'C:\\electron.exe',
+        packaged: false,
+        appPath: 'F:\\github\\oh-my-ppt',
+        nodeExecutable: 'C:\\node.exe'
       })
     ).toEqual({
-      executable: 'C:\\electron.exe',
-      args: ['F:\\github\\oh-my-ppt\\out\\main\\index.js', '--mcp'],
-      command: 'C:\\electron.exe F:\\github\\oh-my-ppt\\out\\main\\index.js --mcp',
+      executable: 'C:\\node.exe',
+      args: ['F:\\github\\oh-my-ppt\\scripts\\oh-my-ppt-mcp.mjs'],
+      command: 'C:\\node.exe F:\\github\\oh-my-ppt\\scripts\\oh-my-ppt-mcp.mjs',
       packaged: false
     })
   })
