@@ -19,6 +19,7 @@ import { EditHtmlListPage } from './pages/edit-html-list'
 import { AppToaster } from './components/AppToaster'
 import { UpdateAvailableDialog } from './components/UpdateAvailableDialog'
 import { ExternalAgentAuthDialog } from './components/ExternalAgentAuthDialog'
+import { ExternalAgentConfirmDialog } from './components/ExternalAgentConfirmDialog'
 import { ScrollArea } from './components/ui/ScrollArea'
 import { ipc } from './lib/ipc'
 import type { UpdateAvailablePayload } from '@shared/app-update.js'
@@ -58,6 +59,7 @@ function App(): React.JSX.Element {
         </div>
         <UpdateAvailableDialog update={availableUpdate} onClose={() => setAvailableUpdate(null)} />
         <ExternalAgentAuthDialog />
+        <ExternalAgentConfirmDialog />
         <AppToaster />
       </>
     )
@@ -103,6 +105,7 @@ function App(): React.JSX.Element {
       </div>
       <UpdateAvailableDialog update={availableUpdate} onClose={() => setAvailableUpdate(null)} />
       <ExternalAgentAuthDialog />
+      <ExternalAgentConfirmDialog />
       <AppToaster />
     </>
   )

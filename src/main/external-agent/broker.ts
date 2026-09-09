@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import {
   COMPATIBLE_EXTERNAL_AGENT_PROTOCOL_VERSIONS,
+  EXTERNAL_AGENT_CONFIRMATION_TIMEOUT_MS,
   createExternalAgentError,
   buildDefaultCapabilitiesOutput,
   isProtocolVersionSupported,
@@ -9,6 +10,7 @@ import {
   redactSessionSnapshot,
   type ExternalAgentBrokerRequest,
   type ExternalAgentCapability,
+  type ExternalAgentConfirmationPrompt,
   type ExternalAgentErrorPayload,
   type ExternalAgentFailureResponse,
   type ExternalAgentPageSnapshot,
@@ -23,6 +25,12 @@ import { computeRequestHash } from './idempotency'
 import { toOperationSummary, type ExternalAgentOperationService } from './operations'
 import type { ExternalAgentRuntimeExecutor } from './runtime-executor'
 import { MAX_PPTX_IMPORT_SIZE } from '../io/pptx-import/constants'
+import { MAX_ASSET_IMPORT_SIZE, resolveAssetUploadTarget } from '../ipc/runtime/local-files'
+
+export type {
+  ExternalAgentConfirmationKind,
+  ExternalAgentConfirmationPrompt
+} from '@shared/external-agent'
 
 export interface BrokerSessionLookupResult {
   session: Parameters<typeof redactSessionSnapshot>[0]['session'] | null
@@ -118,7 +126,8 @@ export class ExternalAgentBroker {
     private serverVersion: string = '2.3.0',
     private operations?: ExternalAgentOperationService,
     private executor?: ExternalAgentRuntimeExecutor,
-    private promptAuth?: ExternalAgentAuthPrompt
+    private promptAuth?: ExternalAgentAuthPrompt,
+    private promptConfirmation?: (input: ExternalAgentConfirmationPrompt) => Promise<boolean>
   ) {}
 
   async handleRequest(
@@ -438,7 +447,11 @@ export class ExternalAgentBroker {
       requestJson: JSON.stringify(request),
       initialStatus: awaitingConfirmation ? 'awaiting_confirmation' : 'queued'
     })
-    this.executor?.kick(sessionId)
+    if (awaitingConfirmation) {
+      void this.beginConfirmation(record.id)
+    } else {
+      this.executor?.kick(sessionId)
+    }
     return {
       ok: true,
       data: toOperationSummary(record),
@@ -479,6 +492,26 @@ export class ExternalAgentBroker {
       targets.push({ path: request.input.sourcePath, mustExist: true })
     } else if (request.type === 'import_assets') {
       for (const source of request.input.sources) {
+        try {
+          resolveAssetUploadTarget(source.sourcePath, source.kind)
+        } catch {
+          return createExternalAgentError({
+            code: 'FILE_TYPE_UNSUPPORTED',
+            message: '素材类型不受支持',
+            details: { targetPath: path.basename(source.sourcePath) }
+          })
+        }
+        try {
+          if (fs.statSync(source.sourcePath).size > MAX_ASSET_IMPORT_SIZE) {
+            return createExternalAgentError({
+              code: 'FILE_TOO_LARGE',
+              message: '单个素材不能超过 20MB',
+              details: { targetPath: path.basename(source.sourcePath) }
+            })
+          }
+        } catch {
+          // 存在性由 validateSafePath 处理
+        }
         targets.push({ path: source.sourcePath, mustExist: true })
       }
     } else if (request.type === 'export_pptx') {
@@ -627,6 +660,129 @@ export class ExternalAgentBroker {
       this.executor?.kick(current.sessionId)
     }
     return { ok: true, data: toOperationSummary(result), operationId: result.id }
+  }
+
+  async resolveConfirmation(operationId: string, approved: boolean): Promise<boolean> {
+    if (!this.operations) return false
+    const current = await this.operations.get(operationId)
+    if (!current || current.status !== 'awaiting_confirmation') return false
+    if (!approved) {
+      await this.operations.transition({
+        operationId,
+        to: 'rejected',
+        errorCode: 'CONFIRMATION_REJECTED',
+        payload: { reason: 'user_rejected' }
+      })
+      return true
+    }
+    const access = await this.authService.checkAccess({
+      agentId: current.agentId,
+      sessionId: current.sessionId
+    })
+    if (!access.authorized) {
+      await this.operations.transition({
+        operationId,
+        to: 'revoked',
+        errorCode: access.error?.code ?? 'AUTH_REVOKED',
+        payload: { reason: 'revoked_before_confirm' }
+      })
+      return true
+    }
+    const queued = await this.operations.transition({
+      operationId,
+      to: 'queued',
+      payload: { confirmed: true }
+    })
+    if (isErrorPayload(queued)) return false
+    this.executor?.kick(queued.sessionId)
+    return true
+  }
+
+  private async beginConfirmation(operationId: string): Promise<void> {
+    if (!this.operations) return
+    const prompt = await this.buildConfirmationPrompt(operationId)
+    if (!prompt) {
+      await this.operations.transition({
+        operationId,
+        to: 'failed',
+        errorCode: 'VALIDATION_FAILED',
+        payload: { message: '无法展示确认弹窗' }
+      })
+      return
+    }
+    if (!this.promptConfirmation) return
+    const timeout = new Promise<'expired'>((resolve) => {
+      setTimeout(() => resolve('expired'), EXTERNAL_AGENT_CONFIRMATION_TIMEOUT_MS)
+    })
+    const decision = await Promise.race([this.promptConfirmation(prompt), timeout])
+    const current = await this.operations.get(operationId)
+    if (!current || current.status !== 'awaiting_confirmation') return
+    if (decision === 'expired') {
+      await this.operations.transition({
+        operationId,
+        to: 'expired',
+        errorCode: 'CONFIRMATION_EXPIRED',
+        payload: { reason: 'timeout' }
+      })
+      return
+    }
+    await this.resolveConfirmation(operationId, decision)
+  }
+
+  private async buildConfirmationPrompt(
+    operationId: string
+  ): Promise<ExternalAgentConfirmationPrompt | null> {
+    const record = await this.operations?.get(operationId)
+    if (!record?.requestJson) return null
+    let parsed: ExternalAgentBrokerRequest
+    try {
+      parsed = JSON.parse(record.requestJson) as ExternalAgentBrokerRequest
+    } catch {
+      return null
+    }
+    const agent = await this.authService.getAgent(record.agentId)
+    const sessionId = record.sessionId
+    const lookup = sessionId ? await this.dataSource.getSessionWithPages(sessionId) : null
+    const sessionTitle = lookup?.session?.title || sessionId
+    if (parsed.type === 'delete_page') {
+      const page = lookup?.pages?.find((item) => (item.page_id || item.id) === parsed.input.pageId)
+      return {
+        operationId,
+        agentId: record.agentId,
+        agentName: agent?.name || record.agentId,
+        kind: 'delete_page',
+        sessionId,
+        sessionTitle,
+        pageId: parsed.input.pageId,
+        pageTitle: page?.title,
+        pageNumber: page?.pageNumber,
+        irreversible: true
+      }
+    }
+    if (parsed.type === 'delete_session') {
+      return {
+        operationId,
+        agentId: record.agentId,
+        agentName: agent?.name || record.agentId,
+        kind: 'delete_session',
+        sessionId,
+        sessionTitle,
+        irreversible: true
+      }
+    }
+    if (parsed.type === 'export_pptx' && parsed.input.overwrite === true) {
+      return {
+        operationId,
+        agentId: record.agentId,
+        agentName: agent?.name || record.agentId,
+        kind: 'overwrite_export',
+        sessionId,
+        sessionTitle,
+        outputPath: parsed.input.outputPath,
+        irreversible: true
+      }
+    }
+    return null
   }
 
   private async resumeOperation(

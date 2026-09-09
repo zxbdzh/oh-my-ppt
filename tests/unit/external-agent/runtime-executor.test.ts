@@ -24,6 +24,9 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
     const executor = new ExternalAgentRuntimeExecutor(operations, product)
@@ -85,6 +88,9 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
     const executor = new ExternalAgentRuntimeExecutor(operations, product)
@@ -138,6 +144,9 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-created' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-create-'))
@@ -199,6 +208,9 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-default' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-create-default-'))
@@ -242,7 +254,7 @@ describe('external agent runtime executor', () => {
     expect(record?.sessionId).toBe('sess-default')
   })
 
-  it('fails queued file tools that are not yet executable', async () => {
+  it('deletes a page through the product runtime after confirmation', async () => {
     const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
     const product: ExternalAgentProductRuntime = {
       startGeneration: vi.fn(async () => ({ success: true })),
@@ -251,11 +263,85 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-assets-'))
+    const auth = new ExternalAgentAuthorizationService(
+      new InMemoryExternalAgentAuthorizationStore()
+    )
+    await auth.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1']
+    })
+    const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
+    const broker = new ExternalAgentBroker(
+      auth,
+      {
+        async listAuthorizedSessions() {
+          return []
+        },
+        async getSessionWithPages() {
+          return {
+            session: {
+              id: 'sess-1',
+              title: '验收会话',
+              status: 'completed',
+              created_at: 0,
+              updated_at: 0
+            },
+            pages: [{ id: 'page-row-1', page_id: 'page-1', pageNumber: 1, title: '封面' }]
+          }
+        }
+      },
+      '2.3.0',
+      operations,
+      executor,
+      undefined,
+      async () => true
+    )
+
+    const created = await broker.handleRequest('pi', {
+      type: 'delete_page',
+      input: { idempotencyKey: 'del-page-1', sessionId: 'sess-1', pageId: 'page-1' }
+    })
+    expect(created.ok).toBe(true)
+    await vi.waitFor(async () => {
+      const record = await operations.get((created as { operationId?: string }).operationId || '')
+      expect(record?.status).toBe('completed')
+    })
+    expect(product.deletePage).toHaveBeenCalledWith({ sessionId: 'sess-1', pageId: 'page-1' })
+  })
+
+  it('imports assets through the product runtime', async () => {
+    const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-assets-run-'))
     const sourcePath = path.join(workspace, 'logo.png')
     fs.writeFileSync(sourcePath, 'png')
+    const product: ExternalAgentProductRuntime = {
+      startGeneration: vi.fn(async () => ({ success: true })),
+      startPageEdit: vi.fn(async () => ({ success: true })),
+      startDeckEdit: vi.fn(async () => ({ success: true })),
+      createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({
+        success: true,
+        assets: [
+          {
+            kind: 'image' as const,
+            relativePath: './images/logo-abc.png',
+            originalName: 'logo.png'
+          }
+        ]
+      })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
+      cancelSession: vi.fn(async () => true)
+    }
     const auth = new ExternalAgentAuthorizationService(
       new InMemoryExternalAgentAuthorizationStore()
     )
@@ -292,9 +378,13 @@ describe('external agent runtime executor', () => {
     })
     expect(imported.ok).toBe(true)
     await executor.kick('sess-1')
+    expect(product.importAssets).toHaveBeenCalledWith({
+      sessionId: 'sess-1',
+      sources: [{ sourcePath, kind: 'image' }]
+    })
     const record = await operations.get((imported as { operationId?: string }).operationId || '')
-    expect(record?.status).toBe('failed')
-    expect(record?.errorCode).toBe('VALIDATION_FAILED')
+    expect(record?.status).toBe('completed')
+    expect(record?.resultRef).toBe('./images/logo-abc.png')
   })
 
   it('imports pptx through the product runtime and attaches the new session', async () => {
@@ -309,6 +399,9 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
     const auth = new ExternalAgentAuthorizationService(
@@ -374,6 +467,9 @@ describe('external agent runtime executor', () => {
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
       exportPptx: vi.fn(async () => ({ success: true, outputPath })),
       importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
       cancelSession: vi.fn(async () => true)
     }
     const auth = new ExternalAgentAuthorizationService(

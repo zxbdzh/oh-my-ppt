@@ -245,6 +245,29 @@ describe('ExternalAgentBroker write and recovery flow', () => {
     if (!imported.ok) expect(imported.error.code).toBe('FILE_TYPE_UNSUPPORTED')
   })
 
+  it('rejects import_assets when the source type is unsupported', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-asset-type-'))
+    const sourcePath = path.join(workspace, 'notes.exe')
+    fs.writeFileSync(sourcePath, 'exe')
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1'],
+      workspaceRoots: [workspace]
+    })
+    const imported = await broker.handleRequest('pi', {
+      type: 'import_assets',
+      input: {
+        idempotencyKey: 'asset-type',
+        sessionId: 'sess-1',
+        sources: [{ sourcePath }]
+      }
+    })
+    expect(imported.ok).toBe(false)
+    if (!imported.ok) expect(imported.error.code).toBe('FILE_TYPE_UNSUPPORTED')
+  })
+
   it('rejects create_session when the workspace root is not granted', async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-workspace-'))
     const other = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-other-'))
@@ -281,5 +304,41 @@ describe('ExternalAgentBroker write and recovery flow', () => {
     })
     expect(created.ok).toBe(true)
     if (created.ok) expect((created.data as { status: string }).status).toBe('queued')
+  })
+
+  it('approves overwrite export into queued and rejects delete_session', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-confirm-'))
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1'],
+      workspaceRoots: [workspace]
+    })
+    const exported = await broker.handleRequest('pi', {
+      type: 'export_pptx',
+      input: {
+        idempotencyKey: 'exp-overwrite',
+        sessionId: 'sess-1',
+        outputPath: path.join(workspace, 'deck.pptx'),
+        overwrite: true
+      }
+    })
+    expect(exported.ok).toBe(true)
+    if (!exported.ok || !exported.operationId) return
+    expect((exported.data as { status: string }).status).toBe('awaiting_confirmation')
+    await broker.resolveConfirmation(exported.operationId, true)
+    expect((await operations.get(exported.operationId))?.status).toBe('queued')
+
+    const deleted = await broker.handleRequest('pi', {
+      type: 'delete_session',
+      input: { idempotencyKey: 'del-reject', sessionId: 'sess-1' }
+    })
+    expect(deleted.ok).toBe(true)
+    if (!deleted.ok || !deleted.operationId) return
+    await broker.resolveConfirmation(deleted.operationId, false)
+    const rejected = await operations.get(deleted.operationId)
+    expect(rejected?.status).toBe('rejected')
+    expect(rejected?.errorCode).toBe('CONFIRMATION_REJECTED')
   })
 })

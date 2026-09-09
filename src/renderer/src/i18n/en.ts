@@ -5,6 +5,7 @@ export const en = {
   common: {
     cancel: 'Cancel',
     delete: 'Delete',
+    overwrite: 'Overwrite',
     edit: 'Edit',
     preview: 'Preview',
     save: 'Save',
@@ -397,6 +398,20 @@ export const en = {
     externalAgentAuthWorkspace: 'Workspace root',
     externalAgentAuthNoSessions: 'No sessions yet. You can still approve create permission.',
     externalAgentApprove: 'Approve',
+    externalAgentConfirmDeletePageTitle: 'Confirm page delete',
+    externalAgentConfirmDeletePageDescription:
+      'An external agent wants to delete this page. This cannot be undone.',
+    externalAgentConfirmDeleteSessionTitle: 'Confirm session delete',
+    externalAgentConfirmDeleteSessionDescription:
+      'An external agent wants to delete this session and its files. This cannot be undone.',
+    externalAgentConfirmOverwriteTitle: 'Confirm overwrite export',
+    externalAgentConfirmOverwriteDescription:
+      'An external agent wants to overwrite an existing PPTX file. The original file will be replaced.',
+    externalAgentConfirmOverwriteAction: 'Overwrite',
+    externalAgentConfirmSession: 'Session',
+    externalAgentConfirmPage: 'Page',
+    externalAgentConfirmPath: 'Target file',
+    externalAgentConfirmIrreversible: 'This action cannot be undone.',
     usagePageEyebrow: 'Usage Analytics',
     usagePageTitle: 'Token usage',
     usagePageDescription:

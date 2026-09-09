@@ -50,6 +50,7 @@ import { createDatabaseBrokerDataSource } from '../external-agent/session-source
 import { SqliteExternalAgentStore } from '../external-agent/sqlite-store'
 import {
   createRendererAuthPrompt,
+  createRendererConfirmationPrompt,
   registerExternalAgentHandlers,
   startBrokerHost
 } from '../external-agent/handlers'
@@ -128,7 +129,8 @@ export function setupIPC(
     app.getVersion(),
     operations,
     executor,
-    createRendererAuthPrompt(() => mainWindow)
+    createRendererAuthPrompt(() => mainWindow),
+    createRendererConfirmationPrompt(() => mainWindow)
   )
   registerExternalAgentHandlers({
     auth,
