@@ -163,6 +163,88 @@ describe('ExternalAgentBroker write and recovery flow', () => {
       expect((exported.data as { status: string }).status).toBe('awaiting_confirmation')
   })
 
+  it('rejects export_pptx when the target already exists without overwrite', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-export-exists-'))
+    const outputPath = path.join(workspace, 'deck.pptx')
+    fs.writeFileSync(outputPath, 'existing')
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1'],
+      workspaceRoots: [workspace]
+    })
+    const exported = await broker.handleRequest('pi', {
+      type: 'export_pptx',
+      input: {
+        idempotencyKey: 'exp-exists',
+        sessionId: 'sess-1',
+        outputPath
+      }
+    })
+    expect(exported.ok).toBe(false)
+    if (!exported.ok) expect(exported.error.code).toBe('EXPORT_TARGET_EXISTS')
+  })
+
+  it('allows export_pptx into the session exports directory without a workspace grant', async () => {
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-export-session-'))
+    const exportsDir = path.join(projectDir, 'exports')
+    fs.mkdirSync(exportsDir)
+    broker = new ExternalAgentBroker(
+      authService,
+      {
+        async listAuthorizedSessions() {
+          return []
+        },
+        async getSessionWithPages() {
+          return null
+        },
+        async resolveSessionProjectDir(sessionId) {
+          return sessionId === 'sess-1' ? projectDir : null
+        }
+      },
+      '2.3.0',
+      operations
+    )
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1']
+    })
+    const exported = await broker.handleRequest('pi', {
+      type: 'export_pptx',
+      input: {
+        idempotencyKey: 'exp-session-exports',
+        sessionId: 'sess-1',
+        outputPath: path.join(exportsDir, 'deck.pptx')
+      }
+    })
+    expect(exported.ok).toBe(true)
+    if (exported.ok) expect((exported.data as { status: string }).status).toBe('queued')
+  })
+
+  it('rejects import_pptx when the source is not a pptx file', async () => {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-import-type-'))
+    const sourcePath = path.join(workspace, 'notes.txt')
+    fs.writeFileSync(sourcePath, 'not pptx')
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      workspaceRoots: [workspace]
+    })
+    const imported = await broker.handleRequest('pi', {
+      type: 'import_pptx',
+      input: {
+        idempotencyKey: 'import-type',
+        sourcePath
+      }
+    })
+    expect(imported.ok).toBe(false)
+    if (!imported.ok) expect(imported.error.code).toBe('FILE_TYPE_UNSUPPORTED')
+  })
+
   it('rejects create_session when the workspace root is not granted', async () => {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-workspace-'))
     const other = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-other-'))

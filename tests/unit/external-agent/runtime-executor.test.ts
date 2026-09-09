@@ -22,6 +22,8 @@ describe('external agent runtime executor', () => {
       startPageEdit: vi.fn(async () => ({ success: true, runId: 'run-edit' })),
       startDeckEdit: vi.fn(async () => ({ success: true, runId: 'run-deck' })),
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
       cancelSession: vi.fn(async () => true)
     }
     const executor = new ExternalAgentRuntimeExecutor(operations, product)
@@ -81,6 +83,8 @@ describe('external agent runtime executor', () => {
       startPageEdit: vi.fn(async () => ({ success: true })),
       startDeckEdit: vi.fn(async () => ({ success: true })),
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
       cancelSession: vi.fn(async () => true)
     }
     const executor = new ExternalAgentRuntimeExecutor(operations, product)
@@ -132,6 +136,8 @@ describe('external agent runtime executor', () => {
       startPageEdit: vi.fn(async () => ({ success: true })),
       startDeckEdit: vi.fn(async () => ({ success: true })),
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-created' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
       cancelSession: vi.fn(async () => true)
     }
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-create-'))
@@ -191,6 +197,8 @@ describe('external agent runtime executor', () => {
       startPageEdit: vi.fn(async () => ({ success: true })),
       startDeckEdit: vi.fn(async () => ({ success: true })),
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-default' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
       cancelSession: vi.fn(async () => true)
     }
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-create-default-'))
@@ -241,11 +249,68 @@ describe('external agent runtime executor', () => {
       startPageEdit: vi.fn(async () => ({ success: true })),
       startDeckEdit: vi.fn(async () => ({ success: true })),
       createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
       cancelSession: vi.fn(async () => true)
     }
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-import-'))
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-assets-'))
+    const sourcePath = path.join(workspace, 'logo.png')
+    fs.writeFileSync(sourcePath, 'png')
+    const auth = new ExternalAgentAuthorizationService(
+      new InMemoryExternalAgentAuthorizationStore()
+    )
+    await auth.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1'],
+      workspaceRoots: [workspace]
+    })
+    const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
+    const broker = new ExternalAgentBroker(
+      auth,
+      {
+        async listAuthorizedSessions() {
+          return []
+        },
+        async getSessionWithPages() {
+          return null
+        }
+      },
+      '2.3.0',
+      operations,
+      executor
+    )
+
+    const imported = await broker.handleRequest('pi', {
+      type: 'import_assets',
+      input: {
+        idempotencyKey: 'assets-1',
+        sessionId: 'sess-1',
+        sources: [{ sourcePath, kind: 'image' }]
+      }
+    })
+    expect(imported.ok).toBe(true)
+    await executor.kick('sess-1')
+    const record = await operations.get((imported as { operationId?: string }).operationId || '')
+    expect(record?.status).toBe('failed')
+    expect(record?.errorCode).toBe('VALIDATION_FAILED')
+  })
+
+  it('imports pptx through the product runtime and attaches the new session', async () => {
+    const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-import-run-'))
     const sourcePath = path.join(workspace, 'deck.pptx')
     fs.writeFileSync(sourcePath, 'pptx')
+    const product: ExternalAgentProductRuntime = {
+      startGeneration: vi.fn(async () => ({ success: true })),
+      startPageEdit: vi.fn(async () => ({ success: true })),
+      startDeckEdit: vi.fn(async () => ({ success: true })),
+      createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      cancelSession: vi.fn(async () => true)
+    }
     const auth = new ExternalAgentAuthorizationService(
       new InMemoryExternalAgentAuthorizationStore()
     )
@@ -275,13 +340,85 @@ describe('external agent runtime executor', () => {
       type: 'import_pptx',
       input: {
         idempotencyKey: 'import-1',
-        sourcePath
+        sourcePath,
+        title: '导入演示'
       }
     })
     expect(imported.ok).toBe(true)
     await executor.kick()
+    expect(product.importPptx).toHaveBeenCalledWith({
+      sourcePath,
+      title: '导入演示',
+      styleId: undefined
+    })
     const record = await operations.get((imported as { operationId?: string }).operationId || '')
-    expect(record?.status).toBe('failed')
-    expect(record?.errorCode).toBe('VALIDATION_FAILED')
+    expect(record?.status).toBe('completed')
+    expect(record?.sessionId).toBe('sess-imported')
+    expect(record?.resultRef).toBe('sess-imported')
+    const access = await auth.checkAccess({
+      agentId: 'pi',
+      capability: 'read',
+      sessionId: 'sess-imported'
+    })
+    expect(access.authorized).toBe(true)
+  })
+
+  it('exports pptx through the product runtime', async () => {
+    const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-export-run-'))
+    const outputPath = path.join(workspace, 'deck.pptx')
+    const product: ExternalAgentProductRuntime = {
+      startGeneration: vi.fn(async () => ({ success: true })),
+      startPageEdit: vi.fn(async () => ({ success: true })),
+      startDeckEdit: vi.fn(async () => ({ success: true })),
+      createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      cancelSession: vi.fn(async () => true)
+    }
+    const auth = new ExternalAgentAuthorizationService(
+      new InMemoryExternalAgentAuthorizationStore()
+    )
+    await auth.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1'],
+      workspaceRoots: [workspace]
+    })
+    const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
+    const broker = new ExternalAgentBroker(
+      auth,
+      {
+        async listAuthorizedSessions() {
+          return []
+        },
+        async getSessionWithPages() {
+          return null
+        }
+      },
+      '2.3.0',
+      operations,
+      executor
+    )
+
+    const created = await broker.handleRequest('pi', {
+      type: 'export_pptx',
+      input: {
+        idempotencyKey: 'export-1',
+        sessionId: 'sess-1',
+        outputPath
+      }
+    })
+    expect(created.ok).toBe(true)
+    await executor.kick('sess-1')
+    expect(product.exportPptx).toHaveBeenCalledWith({
+      sessionId: 'sess-1',
+      outputPath,
+      overwrite: false
+    })
+    const record = await operations.get((created as { operationId?: string }).operationId || '')
+    expect(record?.status).toBe('completed')
+    expect(record?.resultRef).toBe(outputPath)
   })
 })

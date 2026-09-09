@@ -1,3 +1,4 @@
+import path from 'path'
 import type { PPTDatabase, Session, SessionPageRecord, StyleRow } from '../db/database'
 import type { ExternalAgentStyleSummary } from '@shared/external-agent'
 import type { BrokerSessionLookupResult, ExternalAgentBrokerDataSource } from './broker'
@@ -55,6 +56,11 @@ export function createDatabaseBrokerDataSource(db: PPTDatabase): ExternalAgentBr
     async listAvailableStyles() {
       const rows = await db.listStyleRows()
       return rows.filter((row) => row.active).map(toStyleSummary)
+    },
+    async resolveSessionProjectDir(sessionId) {
+      const project = await db.getProject(sessionId)
+      const rootPath = typeof project?.root_path === 'string' ? project.root_path.trim() : ''
+      return rootPath ? path.resolve(rootPath) : null
     }
   }
 }
