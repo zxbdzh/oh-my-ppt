@@ -382,16 +382,34 @@ export const en = {
     agentsTab: 'MCP',
     externalAgentSection: 'Connect MCP',
     externalAgentHint:
-      'Give this config to pi / Claude / Cursor. The first connection asks for approval; revoke access below at any time.',
+      'Copy the JSON below into any MCP client. Each person copies it from their own Oh My PPT. The first connection asks for approval.',
     externalAgentRunning: 'Oh My PPT is running and ready to connect',
     externalAgentStep1: 'Keep the app open',
-    externalAgentStep2: 'Copy the MCP config',
+    externalAgentStep2: 'Copy and paste into an MCP client',
     externalAgentStep3: 'Approve the first-connect prompt',
     externalAgentConfigLabel: 'MCP config',
     externalAgentCommandHint:
-      'Paste this JSON into the client mcpServers map. Oh My PPT must stay open while connecting.',
+      'Paste into Claude Code / Cursor / Claude Desktop mcpServers. Keep the app open while connecting.',
     externalAgentCommandHintDev:
-      'This is a development build, so the command includes the Electron entry. A packaged install only needs --mcp.',
+      'This is the local development config. A packaged install copies the app executable plus --mcp.',
+    externalAgentHowToTitle: 'How to set it up',
+    externalAgentHowToIntro:
+      'Copy the JSON above first. Keep Oh My PPT open while connecting. Each client only needs this once.',
+    externalAgentHowToClaudeCode: 'Claude Code',
+    externalAgentHowToClaudeCode1:
+      'Save the JSON as .mcp.json in the project root (merge mcpServers if the file already exists)',
+    externalAgentHowToClaudeCode2:
+      'Start a new session, run /mcp, and confirm oh-my-ppt is connected',
+    externalAgentHowToClaudeCode3:
+      'Return here to approve access, then ask it to list sessions, generate, or export',
+    externalAgentHowToCursor: 'Cursor',
+    externalAgentHowToCursor1: 'Open Cursor Settings → MCP',
+    externalAgentHowToCursor2: 'Add a server and paste the command and args from the JSON',
+    externalAgentHowToCursor3: 'Save, then return here to approve access',
+    externalAgentHowToDesktop: 'Claude Desktop',
+    externalAgentHowToDesktop1: 'Open the Claude Desktop mcpServers config',
+    externalAgentHowToDesktop2: 'Paste the oh-my-ppt block and restart Claude Desktop',
+    externalAgentHowToDesktop3: 'Return here to approve access',
     externalAgentCopyConfig: 'Copy config',
     externalAgentCopied: 'MCP config copied',
     externalAgentCopyFailed: 'Copy failed. Select the config and copy it manually.',

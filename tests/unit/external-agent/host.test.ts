@@ -58,6 +58,11 @@ describe('external agent host', () => {
   it('detects the stdio MCP launch flag', () => {
     expect(isMcpStdioLaunch(['node', 'app', '--mcp'])).toBe(true)
     expect(isMcpStdioLaunch(['node', 'app'])).toBe(false)
+    const previous = process.env.OH_MY_PPT_MCP
+    process.env.OH_MY_PPT_MCP = '1'
+    expect(isMcpStdioLaunch(['node', 'app'])).toBe(true)
+    if (previous === undefined) delete process.env.OH_MY_PPT_MCP
+    else process.env.OH_MY_PPT_MCP = previous
   })
 
   it('forwards MCP initialize clientInfo to the broker request', () => {

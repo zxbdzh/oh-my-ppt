@@ -12,7 +12,9 @@ type JsonRpcRequest = {
 }
 
 export function isMcpStdioLaunch(argv = process.argv): boolean {
-  return argv.includes('--mcp') || argv.includes('--oh-my-ppt-mcp')
+  return (
+    process.env.OH_MY_PPT_MCP === '1' || argv.includes('--mcp') || argv.includes('--oh-my-ppt-mcp')
+  )
 }
 
 function writeStdout(value: unknown): void {
@@ -29,22 +31,6 @@ function rpcError(id: string | number | null | undefined, code: string, message:
 
 function rpcResult(id: string | number | null | undefined, result: unknown): void {
   writeStdout({ jsonrpc: '2.0', id: id ?? null, result })
-}
-
-function isBrokerFailure(
-  response: unknown
-): response is { ok: false; error: { code: unknown; message: unknown } } {
-  return Boolean(
-    response &&
-    typeof response === 'object' &&
-    'ok' in response &&
-    response.ok === false &&
-    'error' in response &&
-    response.error &&
-    typeof response.error === 'object' &&
-    'code' in response.error &&
-    'message' in response.error
-  )
 }
 
 async function callBroker(socket: Socket, agentId: string, request: unknown): Promise<unknown> {
@@ -110,7 +96,7 @@ export async function runMcpStdioBridge(args?: {
   let leftover = ''
   let queue = Promise.resolve()
   process.stdin.setEncoding('utf8')
-  process.stdin.on('end', () => process.exit(0))
+  process.stdin.resume()
   process.stdin.on('data', (chunk: string) => {
     const frames = parseNdjsonFrames(chunk, leftover)
     leftover = leftoverNdjson(chunk, leftover)
@@ -180,11 +166,10 @@ async function handleRpc(
       rpcError(id, 'APP_NOT_RUNNING', 'Oh My PPT 桌面应用未在运行，请先启动应用')
       return
     }
-    const response = await callBroker(socket, agentId, buildInitializeBrokerRequest(parsed.params))
-    if (isBrokerFailure(response)) {
-      rpcError(id, String(response.error.code), String(response.error.message))
-      return
-    }
+    // MCP handshake must return immediately. Claude Code times out at 30s if we wait for the auth dialog.
+    void callBroker(socket, agentId, buildInitializeBrokerRequest(parsed.params)).catch(
+      () => undefined
+    )
     rpcResult(id, {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
