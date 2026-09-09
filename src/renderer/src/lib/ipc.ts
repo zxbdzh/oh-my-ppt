@@ -75,11 +75,19 @@ export interface ExternalAgentSummary {
   executablePath?: string
   capabilities: ExternalAgentCapability[]
   sessionIds: string[]
+  sessions: Array<{ id: string; title: string }>
   workspaceRoots: string[]
   createdAt: string
   lastUsedAt?: string | null
   revokedAt?: string | null
   connected: boolean
+}
+
+export interface ExternalAgentBridgeConfig {
+  command: string
+  executable: string
+  args: string[]
+  packaged: boolean
 }
 
 export interface ExternalAgentAuthRequest {
@@ -1126,7 +1134,7 @@ export const ipc = {
   },
   getSettings: () => getIpc().invoke('settings:get') as Promise<Record<string, unknown>>,
   getExternalAgentBridgeCommand: () =>
-    getIpc().invoke('external-agent:bridge-command') as Promise<{ command: string }>,
+    getIpc().invoke('external-agent:bridge-command') as Promise<ExternalAgentBridgeConfig>,
   getPendingExternalAgentAuth: () =>
     getIpc().invoke('external-agent:pending-auth') as Promise<ExternalAgentAuthRequest | null>,
   getPendingExternalAgentConfirmation: () =>

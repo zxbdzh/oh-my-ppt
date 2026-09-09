@@ -10,6 +10,7 @@ import { startExternalAgentHost, type ExternalAgentHost } from './host'
 import type { ExternalAgentBroker } from './broker'
 import type { ExternalAgentOperationService } from './operations'
 import type { ExternalAgentRuntimeExecutor } from './runtime-executor'
+import { resolveMcpLaunch } from './mcp-launch'
 
 export interface ExternalAgentSummary {
   id: string
@@ -18,6 +19,7 @@ export interface ExternalAgentSummary {
   executablePath?: string
   capabilities: ExternalAgentCapability[]
   sessionIds: string[]
+  sessions: Array<{ id: string; title: string }>
   workspaceRoots: string[]
   createdAt: string
   lastUsedAt?: string | null
@@ -108,9 +110,11 @@ export function registerExternalAgentHandlers(args: {
   getStoragePath: () => Promise<string>
 }): void {
   ipcMain.handle('external-agent:bridge-command', async () => {
-    const exe = app.getPath('exe')
-    const quoted = exe.includes(' ') ? `"${exe}"` : exe
-    return { command: `${quoted} --mcp` }
+    return resolveMcpLaunch({
+      executable: app.getPath('exe'),
+      packaged: app.isPackaged,
+      entry: process.argv[1]
+    })
   })
 
   ipcMain.handle('external-agent:auth-options', async () => {
@@ -132,17 +136,24 @@ export function registerExternalAgentHandlers(args: {
   })
 
   ipcMain.handle('external-agent:list', async () => {
-    const [agents, grants] = await Promise.all([args.auth.listAgents(), args.auth.listGrants()])
+    const [agents, grants, sessions] = await Promise.all([
+      args.auth.listAgents(),
+      args.auth.listGrants(),
+      args.listSessions()
+    ])
     const grantByAgent = new Map(grants.map((grant) => [grant.agentId, grant]))
+    const titleById = new Map(sessions.map((session) => [session.id, session.title]))
     return agents.map((agent): ExternalAgentSummary => {
       const grant = grantByAgent.get(agent.id)
+      const sessionIds = grant?.sessionIds ?? []
       return {
         id: agent.id,
         name: agent.name,
         version: agent.version,
         executablePath: agent.executablePath,
         capabilities: grant?.capabilities ?? [],
-        sessionIds: grant?.sessionIds ?? [],
+        sessionIds,
+        sessions: sessionIds.map((id) => ({ id, title: titleById.get(id) || id })),
         workspaceRoots: grant?.workspaceRoots ?? [],
         createdAt: agent.createdAt,
         lastUsedAt: agent.lastUsedAt ?? grant?.lastUsedAt,
