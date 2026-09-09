@@ -418,6 +418,11 @@ export const en = {
     externalAgentCapDeleteSession: 'Delete session',
     externalAgentRevoke: 'Revoke',
     externalAgentRevokeConfirm: 'Revoke access for "{name}"? Related tasks will be cancelled.',
+    externalAgentEditGrant: 'Edit access',
+    externalAgentSaveGrant: 'Save access',
+    externalAgentGrantSaved: 'Access updated',
+    externalAgentGrantSaveFailed: 'Could not update access',
+    externalAgentEditWorkspaceHint: 'Import and export can only use this folder.',
     externalAgentAuthTitle: 'Authorize external agent',
     externalAgentAuthDescription:
       'This agent is requesting access to Oh My PPT on this computer. Non-delete capabilities are selected by default.',

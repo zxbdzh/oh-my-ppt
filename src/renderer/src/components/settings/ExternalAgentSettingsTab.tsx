@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, FolderSearch } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card'
+import { Input } from '../ui/Input'
 import { useToastStore } from '../../store'
 import { ipc, type ExternalAgentBridgeConfig, type ExternalAgentSummary } from '../../lib/ipc'
 import type { ExternalAgentCapability } from '@shared/external-agent'
@@ -199,6 +200,7 @@ export function ExternalAgentSettingsTab({ t }: ExternalAgentSettingsTabProps): 
                 revoking={revokingId === agent.id}
                 t={t}
                 onRevoke={() => void handleRevoke(agent)}
+                onUpdated={() => void load()}
               />
             ))
           )}
@@ -212,16 +214,77 @@ function AgentCard({
   agent,
   revoking,
   t,
-  onRevoke
+  onRevoke,
+  onUpdated
 }: {
   agent: ExternalAgentSummary
   revoking: boolean
   t: SettingsTranslate
   onRevoke: () => void
+  onUpdated: () => void
 }): React.JSX.Element {
+  const { success, error } = useToastStore()
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [availableSessions, setAvailableSessions] = useState<Array<{ id: string; title: string }>>(
+    []
+  )
+  const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([])
+  const [workspaceRoot, setWorkspaceRoot] = useState('')
   const sessions = agent.sessions ?? agent.sessionIds.map((id) => ({ id, title: id }))
   const visibleSessions = sessions.slice(0, SESSION_PREVIEW)
   const hiddenSessionCount = Math.max(0, sessions.length - visibleSessions.length)
+
+  const startEdit = async (): Promise<void> => {
+    const options = await ipc.getExternalAgentAuthOptions()
+    const extra = sessions.filter(
+      (session) => !options.sessions.some((item) => item.id === session.id)
+    )
+    const seen = new Set<string>()
+    setAvailableSessions(
+      [...options.sessions, ...extra].filter((session) => {
+        if (seen.has(session.id)) return false
+        seen.add(session.id)
+        return true
+      })
+    )
+    setSelectedSessionIds(agent.sessionIds)
+    setWorkspaceRoot(agent.workspaceRoots[0] ?? options.defaultWorkspaceRoot ?? '')
+    setEditing(true)
+  }
+
+  const chooseWorkspace = async (): Promise<void> => {
+    const result = await ipc.chooseStoragePath()
+    if (result.path) setWorkspaceRoot(result.path)
+  }
+
+  const saveGrant = async (): Promise<void> => {
+    setSaving(true)
+    try {
+      const result = await ipc.updateExternalAgentGrant({
+        agentId: agent.id,
+        sessionIds: selectedSessionIds,
+        workspaceRoots: workspaceRoot.trim() ? [workspaceRoot.trim()] : []
+      })
+      if (!result.success) {
+        error(t('settings.externalAgentGrantSaveFailed'))
+        return
+      }
+      success(t('settings.externalAgentGrantSaved'))
+      setEditing(false)
+      onUpdated()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const toggleSession = (sessionId: string): void => {
+    setSelectedSessionIds((current) =>
+      current.includes(sessionId)
+        ? current.filter((id) => id !== sessionId)
+        : [...current, sessionId]
+    )
+  }
 
   return (
     <div
@@ -248,10 +311,15 @@ function AgentCard({
               ? t('settings.externalAgentConnected')
               : t('settings.externalAgentRevoked')}
           </span>
+          {agent.connected && !editing ? (
+            <Button size="sm" variant="outline" onClick={() => void startEdit()}>
+              {t('settings.externalAgentEditGrant')}
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
-            disabled={!agent.connected || revoking}
+            disabled={!agent.connected || revoking || editing}
             onClick={onRevoke}
           >
             {t('settings.externalAgentRevoke')}
@@ -270,33 +338,94 @@ function AgentCard({
           ))}
         </div>
       ) : null}
-      <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
-        <div>
-          <dt className="inline text-[#6b735f]">{t('settings.externalAgentSessions')}: </dt>
-          <dd className="inline">
-            {visibleSessions.length > 0
-              ? [
-                  ...visibleSessions.map((session) => session.title),
-                  hiddenSessionCount > 0
-                    ? t('settings.externalAgentMoreSessions', { count: hiddenSessionCount })
-                    : null
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
-              : t('settings.externalAgentNoSessions')}
-          </dd>
+      {editing ? (
+        <div className="mt-3 space-y-3">
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-[#6b735f]">
+              {t('settings.externalAgentAuthSessions')}
+            </p>
+            {availableSessions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t('settings.externalAgentAuthNoSessions')}
+              </p>
+            ) : (
+              availableSessions.map((session) => (
+                <label key={session.id} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={selectedSessionIds.includes(session.id)}
+                    onChange={() => toggleSession(session.id)}
+                  />
+                  <span className="min-w-0 truncate">{session.title}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {session.id.slice(0, 8)}
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-[#6b735f]">
+              {t('settings.externalAgentAuthWorkspace')}
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={workspaceRoot}
+                onChange={(event) => setWorkspaceRoot(event.target.value)}
+                className="h-9 min-w-0 flex-1 text-xs"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-9 shrink-0"
+                onClick={() => void chooseWorkspace()}
+              >
+                <FolderSearch className="mr-1.5 h-3.5 w-3.5" />
+                {t('settings.choose')}
+              </Button>
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {t('settings.externalAgentEditWorkspaceHint')}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" disabled={saving} onClick={() => setEditing(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button size="sm" disabled={saving} onClick={() => void saveGrant()}>
+              {t('settings.externalAgentSaveGrant')}
+            </Button>
+          </div>
         </div>
-        <div>
-          <dt className="inline text-[#6b735f]">{t('settings.externalAgentWorkspaces')}: </dt>
-          <dd className="inline break-all">
-            {agent.workspaceRoots.join(' · ') || t('settings.externalAgentNoWorkspace')}
-          </dd>
-        </div>
-        <div>
-          <dt className="inline text-[#6b735f]">{t('settings.externalAgentLastUsed')}: </dt>
-          <dd className="inline">{formatRelativeTime(agent.lastUsedAt, t)}</dd>
-        </div>
-      </dl>
+      ) : (
+        <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
+          <div>
+            <dt className="inline text-[#6b735f]">{t('settings.externalAgentSessions')}: </dt>
+            <dd className="inline">
+              {visibleSessions.length > 0
+                ? [
+                    ...visibleSessions.map((session) => session.title),
+                    hiddenSessionCount > 0
+                      ? t('settings.externalAgentMoreSessions', { count: hiddenSessionCount })
+                      : null
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : t('settings.externalAgentNoSessions')}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline text-[#6b735f]">{t('settings.externalAgentWorkspaces')}: </dt>
+            <dd className="inline break-all">
+              {agent.workspaceRoots.join(' · ') || t('settings.externalAgentNoWorkspace')}
+            </dd>
+          </div>
+          <div>
+            <dt className="inline text-[#6b735f]">{t('settings.externalAgentLastUsed')}: </dt>
+            <dd className="inline">{formatRelativeTime(agent.lastUsedAt, t)}</dd>
+          </div>
+        </dl>
+      )}
     </div>
   )
 }

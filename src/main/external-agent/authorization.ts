@@ -350,6 +350,41 @@ export class ExternalAgentAuthorizationService {
     return true
   }
 
+  async updateGrant(
+    agentId: string,
+    patch: { sessionIds?: string[]; workspaceRoots?: string[] }
+  ): Promise<{ grant: ExternalAgentGrantRecord; removedSessionIds: string[] } | null> {
+    const [agent, grant] = await Promise.all([
+      this.store.getAgent(agentId),
+      this.store.getGrant(agentId)
+    ])
+    if (!agent || agent.revokedAt || !grant || grant.revokedAt) return null
+
+    const sessionIds = patch.sessionIds ?? grant.sessionIds
+    const uniqueSessionIds = [...new Set(sessionIds.filter(Boolean))]
+    const removedSessionIds = grant.sessionIds.filter((id) => !uniqueSessionIds.includes(id))
+    const workspaceRoots =
+      patch.workspaceRoots === undefined
+        ? grant.workspaceRoots
+        : [
+            ...new Set(
+              patch.workspaceRoots.flatMap((root) => {
+                const trimmed = root.trim()
+                return trimmed ? [path.resolve(trimmed)] : []
+              })
+            )
+          ]
+
+    const next: ExternalAgentGrantRecord = {
+      ...grant,
+      sessionIds: uniqueSessionIds,
+      workspaceRoots,
+      updatedAt: new Date().toISOString()
+    }
+    await this.store.saveGrant(next)
+    return { grant: next, removedSessionIds }
+  }
+
   async getAgent(agentId: string): Promise<ExternalAgentRecord | null> {
     return this.store.getAgent(agentId)
   }

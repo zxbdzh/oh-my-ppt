@@ -83,6 +83,38 @@ describe('external agent authorization and path security', () => {
     expect(revoked.error?.code).toBe('AUTH_REVOKED')
   })
 
+  it('updates grant sessions and workspace without re-authorizing', async () => {
+    const firstRoot = path.join(tempDir, 'one')
+    const nextRoot = path.join(tempDir, 'two')
+    fs.mkdirSync(firstRoot, { recursive: true })
+    fs.mkdirSync(nextRoot, { recursive: true })
+
+    await authService.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess_1', 'sess_2'],
+      workspaceRoots: [firstRoot]
+    })
+
+    const updated = await authService.updateGrant('pi', {
+      sessionIds: ['sess_2', 'sess_3'],
+      workspaceRoots: [nextRoot]
+    })
+    expect(updated?.removedSessionIds).toEqual(['sess_1'])
+    expect(updated?.grant.sessionIds).toEqual(['sess_2', 'sess_3'])
+    expect(updated?.grant.workspaceRoots).toEqual([path.resolve(nextRoot)])
+
+    expect(
+      (await authService.checkAccess({ agentId: 'pi', sessionId: 'sess_1' })).error?.code
+    ).toBe('SESSION_NOT_GRANTED')
+    expect((await authService.checkAccess({ agentId: 'pi', sessionId: 'sess_3' })).authorized).toBe(
+      true
+    )
+
+    expect(await authService.updateGrant('missing', { sessionIds: [] })).toBeNull()
+  })
+
   it('safely verifies boundary containment and rejects path traversal', () => {
     const root = path.join(tempDir, 'workspace')
     fs.mkdirSync(root, { recursive: true })

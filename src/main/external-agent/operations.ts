@@ -401,19 +401,27 @@ export class ExternalAgentOperationService {
     })
   }
 
-  async revokeAgentOperations(agentId: string): Promise<string[]> {
+  async revokeAgentOperations(agentId: string, sessionIds?: string[]): Promise<string[]> {
     const active = await this.store.listActiveByAgent(agentId)
-    const sessionIds = [
-      ...new Set(active.map((record) => record.sessionId).filter((id): id is string => Boolean(id)))
+    const targets =
+      sessionIds === undefined
+        ? active
+        : active.filter(
+            (record) => record.sessionId != null && sessionIds.includes(record.sessionId)
+          )
+    const revokedSessionIds = [
+      ...new Set(
+        targets.map((record) => record.sessionId).filter((id): id is string => Boolean(id))
+      )
     ]
-    for (const record of active) {
+    for (const record of targets) {
       await this.transition({
         operationId: record.id,
         to: 'revoked',
         payload: { agentId }
       })
     }
-    return sessionIds
+    return revokedSessionIds
   }
 
   async markShuttingDown(sessionIds: string[]): Promise<void> {
