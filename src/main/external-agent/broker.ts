@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import {
   COMPATIBLE_EXTERNAL_AGENT_PROTOCOL_VERSIONS,
   createExternalAgentError,
@@ -20,6 +22,7 @@ import { validateSafePath, type ExternalAgentAuthorizationService } from './auth
 import { computeRequestHash } from './idempotency'
 import { toOperationSummary, type ExternalAgentOperationService } from './operations'
 import type { ExternalAgentRuntimeExecutor } from './runtime-executor'
+import { MAX_PPTX_IMPORT_SIZE } from '../io/pptx-import/constants'
 
 export interface BrokerSessionLookupResult {
   session: Parameters<typeof redactSessionSnapshot>[0]['session'] | null
@@ -31,6 +34,7 @@ export interface ExternalAgentBrokerDataSource {
   listAuthorizedSessions(sessionIds: string[]): Promise<BrokerSessionLookupResult[]>
   getSessionWithPages(sessionId: string): Promise<BrokerSessionLookupResult | null>
   listAvailableStyles?(): Promise<ExternalAgentStyleSummary[]>
+  resolveSessionProjectDir?(sessionId: string): Promise<string | null>
 }
 
 export type BrokerResponse<T> =
@@ -352,8 +356,15 @@ export class ExternalAgentBroker {
           createExternalAgentError({ code: 'AUTH_REQUIRED', message: '需要授权后才能调用该工具' })
       )
     }
-    const workspaceError = this.assertWorkspaceAccess(request, access.grant?.workspaceRoots ?? [])
+    const workspaceError = await this.assertWorkspaceAccess(
+      request,
+      access.grant?.workspaceRoots ?? []
+    )
     if (workspaceError) return fail(workspaceError)
+    if (request.type === 'export_pptx' && request.input.overwrite !== true) {
+      const existingError = this.assertExportTargetAvailable(request.input.outputPath)
+      if (existingError) return fail(existingError)
+    }
 
     if (request.type === 'get_operation') {
       return this.readOperation(agentId, request.input.operationId)
@@ -435,23 +446,53 @@ export class ExternalAgentBroker {
     }
   }
 
-  private assertWorkspaceAccess(
+  private async assertWorkspaceAccess(
     request: ExternalAgentBrokerRequest,
     workspaceRoots: string[]
-  ): ExternalAgentErrorPayload | null {
+  ): Promise<ExternalAgentErrorPayload | null> {
     const targets: Array<{ path: string; mustExist: boolean; allowMissingLeaf?: boolean }> = []
+    let authorizedRoots = workspaceRoots
     if (request.type === 'create_session') {
       if (request.input.workspaceRootPath) {
         if (workspaceRoots.length === 0) return null
         targets.push({ path: request.input.workspaceRootPath, mustExist: false })
       }
     } else if (request.type === 'import_pptx') {
+      if (!request.input.sourcePath.toLowerCase().endsWith('.pptx')) {
+        return createExternalAgentError({
+          code: 'FILE_TYPE_UNSUPPORTED',
+          message: '仅支持导入 .pptx 文件',
+          details: { targetPath: path.basename(request.input.sourcePath) }
+        })
+      }
+      try {
+        if (fs.statSync(request.input.sourcePath).size > MAX_PPTX_IMPORT_SIZE) {
+          return createExternalAgentError({
+            code: 'FILE_TOO_LARGE',
+            message: 'PPTX 文件不能超过 500MB',
+            details: { targetPath: path.basename(request.input.sourcePath) }
+          })
+        }
+      } catch {
+        // 存在性由 validateSafePath 处理
+      }
       targets.push({ path: request.input.sourcePath, mustExist: true })
     } else if (request.type === 'import_assets') {
       for (const source of request.input.sources) {
         targets.push({ path: source.sourcePath, mustExist: true })
       }
     } else if (request.type === 'export_pptx') {
+      if (!request.input.outputPath.toLowerCase().endsWith('.pptx')) {
+        return createExternalAgentError({
+          code: 'FILE_TYPE_UNSUPPORTED',
+          message: '导出目标必须是 .pptx 文件',
+          details: { targetPath: path.basename(request.input.outputPath) }
+        })
+      }
+      const projectDir = await this.dataSource.resolveSessionProjectDir?.(request.input.sessionId)
+      if (projectDir) {
+        authorizedRoots = [...workspaceRoots, path.join(projectDir, 'exports')]
+      }
       targets.push({
         path: request.input.outputPath,
         mustExist: false,
@@ -459,7 +500,7 @@ export class ExternalAgentBroker {
       })
     }
     if (targets.length === 0) return null
-    if (workspaceRoots.length === 0) {
+    if (authorizedRoots.length === 0) {
       return createExternalAgentError({
         code: 'WORKSPACE_NOT_GRANTED',
         message: '该 Agent 尚未授权工作区根目录'
@@ -468,7 +509,7 @@ export class ExternalAgentBroker {
     for (const target of targets) {
       const check = validateSafePath({
         targetPath: target.path,
-        authorizedRoots: workspaceRoots,
+        authorizedRoots,
         mustExist: target.mustExist,
         allowMissingLeaf: target.allowMissingLeaf
       })
@@ -481,6 +522,17 @@ export class ExternalAgentBroker {
           })
         )
       }
+    }
+    return null
+  }
+
+  private assertExportTargetAvailable(outputPath: string): ExternalAgentErrorPayload | null {
+    if (fs.existsSync(path.resolve(outputPath))) {
+      return createExternalAgentError({
+        code: 'EXPORT_TARGET_EXISTS',
+        message: '导出目标已存在，需设置 overwrite: true 并确认后覆盖',
+        details: { targetPath: path.basename(outputPath) }
+      })
     }
     return null
   }

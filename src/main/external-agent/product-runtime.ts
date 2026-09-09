@@ -6,6 +6,8 @@ import { resolveDeckContext, executeDeckGeneration } from '../generation/deck-fl
 import { createEmitAssistantMessage } from '../generation/generation-utils'
 import { finalizeGenerationFailure } from '../generation/finalization'
 import { createProductSession } from '../session/create-session'
+import { writeSessionPptx } from '../io/pptx-export'
+import { importPptxToSession } from '../io/pptx-import/import-session'
 import type { IpcContext } from '../ipc/context'
 
 export type ExternalAgentProductStartResult = {
@@ -14,6 +16,11 @@ export type ExternalAgentProductStartResult = {
   queued?: boolean
   alreadyRunning?: boolean
   sessionId?: string
+}
+
+export type ExternalAgentProductExportResult = {
+  success: boolean
+  outputPath: string
 }
 
 export interface ExternalAgentProductRuntime {
@@ -26,6 +33,16 @@ export interface ExternalAgentProductRuntime {
     styleId?: string
     slideSizeId?: string
     pageCount?: number
+  }): Promise<ExternalAgentProductStartResult>
+  exportPptx(payload: {
+    sessionId: string
+    outputPath: string
+    overwrite?: boolean
+  }): Promise<ExternalAgentProductExportResult>
+  importPptx(payload: {
+    sourcePath: string
+    title?: string
+    styleId?: string
   }): Promise<ExternalAgentProductStartResult>
   cancelSession(sessionId: string): Promise<boolean>
 }
@@ -45,6 +62,10 @@ export function createIpcProductRuntime(args: {
     | 'ensureSessionAssets'
     | 'modelRuntime'
     | 'decryptApiKey'
+    | 'resolveSessionPageFiles'
+    | 'waitForPrintReadySignal'
+    | 'EXPORT_PAGE_READY_TIMEOUT_MS'
+    | 'EXPORT_CAPTURE_SETTLE_MS'
   >
 }): ExternalAgentProductRuntime {
   return {
@@ -54,6 +75,26 @@ export function createIpcProductRuntime(args: {
     createSession: async (payload) => {
       const created = await createProductSession(args.ipcContext, payload)
       return { success: true, sessionId: created.sessionId, runId: created.sessionId }
+    },
+    exportPptx: async (payload) => {
+      const exported = await writeSessionPptx({
+        sessionId: payload.sessionId,
+        outputPath: payload.outputPath,
+        resolveSessionPageFiles: args.ipcContext.resolveSessionPageFiles,
+        waitForPrintReadySignal: args.ipcContext.waitForPrintReadySignal,
+        timeoutMs: args.ipcContext.EXPORT_PAGE_READY_TIMEOUT_MS,
+        settleMs: args.ipcContext.EXPORT_CAPTURE_SETTLE_MS,
+        db: args.ipcContext.db
+      })
+      return { success: true, outputPath: exported.outputPath }
+    },
+    importPptx: async (payload) => {
+      const imported = await importPptxToSession(args.ipcContext, {
+        sourcePath: payload.sourcePath,
+        title: payload.title,
+        styleId: payload.styleId
+      })
+      return { success: true, sessionId: imported.sessionId, runId: imported.sessionId }
     },
     cancelSession: async (sessionId) => {
       if (await args.pageEditJobs.cancel(sessionId)) return true

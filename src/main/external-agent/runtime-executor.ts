@@ -3,7 +3,9 @@ import type {
   CreateSessionInput,
   EditDeckInput,
   EditPageInput,
+  ExportPptxInput,
   ExternalAgentBrokerRequest,
+  ImportPptxInput,
   StartGenerationInput
 } from '@shared/external-agent'
 import type { ExternalAgentOperationRecord, ExternalAgentOperationService } from './operations'
@@ -11,7 +13,14 @@ import { mapGenerateChunkToExternalEvent } from './event-map'
 import type { ExternalAgentProductRuntime } from './product-runtime'
 import type { ExternalAgentAuthorizationService } from './authorization'
 
-const EXECUTABLE_TOOLS = new Set(['create_session', 'start_generation', 'edit_page', 'edit_deck'])
+const EXECUTABLE_TOOLS = new Set([
+  'create_session',
+  'start_generation',
+  'edit_page',
+  'edit_deck',
+  'export_pptx',
+  'import_pptx'
+])
 
 export class ExternalAgentRuntimeExecutor {
   private drains = new Map<string, Promise<void>>()
@@ -83,6 +92,45 @@ export class ExternalAgentRuntimeExecutor {
         pageCount: input.pageCount
       })
       if (!result.sessionId) throw new Error('创建 Session 未返回 sessionId')
+      await this.auth?.attachSession(record.agentId, result.sessionId)
+      await this.operations.transition({
+        operationId: record.id,
+        to: 'completed',
+        progress: 100,
+        sessionId: result.sessionId,
+        resultRef: result.sessionId,
+        eventType: 'completed',
+        payload: { sessionId: result.sessionId }
+      })
+      return false
+    }
+
+    if (record.toolName === 'export_pptx') {
+      const input = this.toExportPptxInput(record)
+      const result = await this.product.exportPptx({
+        sessionId: input.sessionId,
+        outputPath: input.outputPath,
+        overwrite: input.overwrite === true
+      })
+      await this.operations.transition({
+        operationId: record.id,
+        to: 'completed',
+        progress: 100,
+        resultRef: result.outputPath,
+        eventType: 'completed',
+        payload: { outputPath: result.outputPath }
+      })
+      return false
+    }
+
+    if (record.toolName === 'import_pptx') {
+      const input = this.toImportPptxInput(record)
+      const result = await this.product.importPptx({
+        sourcePath: input.sourcePath,
+        title: input.title,
+        styleId: input.styleId
+      })
+      if (!result.sessionId) throw new Error('导入 PPTX 未返回 sessionId')
       await this.auth?.attachSession(record.agentId, result.sessionId)
       await this.operations.transition({
         operationId: record.id,
@@ -239,6 +287,18 @@ export class ExternalAgentRuntimeExecutor {
   private toCreateSessionInput(record: ExternalAgentOperationRecord): CreateSessionInput {
     const parsed = this.parseRequest(record)
     if (parsed.type !== 'create_session') throw new Error('operation 不是 create_session')
+    return parsed.input
+  }
+
+  private toExportPptxInput(record: ExternalAgentOperationRecord): ExportPptxInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'export_pptx') throw new Error('operation 不是 export_pptx')
+    return parsed.input
+  }
+
+  private toImportPptxInput(record: ExternalAgentOperationRecord): ImportPptxInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'import_pptx') throw new Error('operation 不是 import_pptx')
     return parsed.input
   }
 }
