@@ -372,8 +372,8 @@ export const en = {
     modelTab: 'Base model configuration',
     imageModelTab: 'Image models',
     advancedTab: 'Advanced',
-    agentsTab: 'Local agents',
-    externalAgentSection: 'Connect a local agent',
+    agentsTab: 'MCP',
+    externalAgentSection: 'Connect MCP',
     externalAgentHint:
       'Give this config to pi / Claude / Cursor. The first connection asks for approval; revoke access below at any time.',
     externalAgentRunning: 'Oh My PPT is running and ready to connect',
