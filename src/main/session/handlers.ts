@@ -25,6 +25,7 @@ import { warmSessionFirstPageThumbnails } from './session-thumbnail'
 import { createSessionMasterIfMissing } from './master-service'
 import { resolveConfiguredImageModel } from '../image-generation/model-config'
 import { createProductSession } from './create-session'
+import { deleteProductSession } from './delete-session'
 
 const THINKING_ID_RE = /^[a-zA-Z0-9_-]{6,32}$/
 const THINKING_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
@@ -740,7 +741,7 @@ export function registerSessionHandlers(ctx: IpcContext): void {
   )
 
   ipcMain.handle('session:delete', async (_event, sessionId) => {
-    await db.deleteSession(sessionId)
+    await deleteProductSession(ctx, sessionId)
     return { success: true }
   })
 }

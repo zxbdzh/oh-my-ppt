@@ -380,6 +380,19 @@ export class SqliteExternalAgentStore
     return mapped.filter((row) => !row.sessionId)
   }
 
+  async listAwaitingConfirmation(): Promise<ExternalAgentOperationRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.externalAgentOperations)
+      .where(eq(schema.externalAgentOperations.status, 'awaiting_confirmation'))
+      .orderBy(
+        asc(schema.externalAgentOperations.createdAt),
+        asc(schema.externalAgentOperations.id)
+      )
+      .all()
+    return rows.map(mapOperation).filter((row): row is ExternalAgentOperationRecord => Boolean(row))
+  }
+
   async listActiveByAgent(agentId: string): Promise<ExternalAgentOperationRecord[]> {
     const rows = await this.db
       .select()

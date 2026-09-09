@@ -6,8 +6,11 @@ import { resolveDeckContext, executeDeckGeneration } from '../generation/deck-fl
 import { createEmitAssistantMessage } from '../generation/generation-utils'
 import { finalizeGenerationFailure } from '../generation/finalization'
 import { createProductSession } from '../session/create-session'
+import { deleteProductSession } from '../session/delete-session'
+import { deleteSessionPages } from '../session/page-management-service'
 import { writeSessionPptx } from '../io/pptx-export'
 import { importPptxToSession } from '../io/pptx-import/import-session'
+import { resolveAssetUploadTarget } from '../ipc/runtime/local-files'
 import type { IpcContext } from '../ipc/context'
 
 export type ExternalAgentProductStartResult = {
@@ -21,6 +24,17 @@ export type ExternalAgentProductStartResult = {
 export type ExternalAgentProductExportResult = {
   success: boolean
   outputPath: string
+}
+
+export type ExternalAgentImportedAsset = {
+  kind: 'image' | 'video' | 'document'
+  relativePath: string
+  originalName: string
+}
+
+export type ExternalAgentProductImportAssetsResult = {
+  success: boolean
+  assets: ExternalAgentImportedAsset[]
 }
 
 export interface ExternalAgentProductRuntime {
@@ -44,6 +58,12 @@ export interface ExternalAgentProductRuntime {
     title?: string
     styleId?: string
   }): Promise<ExternalAgentProductStartResult>
+  importAssets(payload: {
+    sessionId: string
+    sources: Array<{ sourcePath: string; kind?: 'image' | 'video' | 'document'; label?: string }>
+  }): Promise<ExternalAgentProductImportAssetsResult>
+  deletePage(payload: { sessionId: string; pageId: string }): Promise<{ success: boolean }>
+  deleteSession(payload: { sessionId: string }): Promise<{ success: boolean }>
   cancelSession(sessionId: string): Promise<boolean>
 }
 
@@ -66,6 +86,8 @@ export function createIpcProductRuntime(args: {
     | 'waitForPrintReadySignal'
     | 'EXPORT_PAGE_READY_TIMEOUT_MS'
     | 'EXPORT_CAPTURE_SETTLE_MS'
+    | 'uploadSessionFiles'
+    | 'resolveSessionProjectDir'
   >
 }): ExternalAgentProductRuntime {
   return {
@@ -95,6 +117,38 @@ export function createIpcProductRuntime(args: {
         styleId: payload.styleId
       })
       return { success: true, sessionId: imported.sessionId, runId: imported.sessionId }
+    },
+    importAssets: async (payload) => {
+      const assets: ExternalAgentImportedAsset[] = []
+      for (const source of payload.sources) {
+        const target = resolveAssetUploadTarget(source.sourcePath, source.kind)
+        const [uploaded] = await args.ipcContext.uploadSessionFiles(
+          payload.sessionId,
+          [{ path: source.sourcePath, name: source.label }],
+          target
+        )
+        if (!uploaded) throw new Error('素材导入结果不完整')
+        assets.push({
+          kind: target === 'images' ? 'image' : target === 'videos' ? 'video' : 'document',
+          relativePath: uploaded.relativePath,
+          originalName: uploaded.originalName
+        })
+      }
+      return { success: true, assets }
+    },
+    deletePage: async (payload) => {
+      await deleteSessionPages(args.ipcContext, {
+        sessionId: payload.sessionId,
+        pageIds: [payload.pageId]
+      })
+      return { success: true }
+    },
+    deleteSession: async (payload) => {
+      await args.pageEditJobs.cancel(payload.sessionId)
+      await args.deckEditJobs.cancel(payload.sessionId)
+      await args.jobManager.cancel(payload.sessionId)
+      await deleteProductSession(args.ipcContext, payload.sessionId)
+      return { success: true }
     },
     cancelSession: async (sessionId) => {
       if (await args.pageEditJobs.cancel(sessionId)) return true

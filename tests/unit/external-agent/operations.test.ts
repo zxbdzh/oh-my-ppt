@@ -111,5 +111,6 @@ describe('external agent operation queue and events', () => {
     expect(canTransition('completed', 'queued')).toBe(false)
     expect(canTransition('queued', 'running')).toBe(true)
     expect(canTransition('interrupted', 'queued')).toBe(true)
+    expect(canTransition('awaiting_confirmation', 'queued')).toBe(true)
   })
 })

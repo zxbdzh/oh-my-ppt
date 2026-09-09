@@ -350,6 +350,10 @@ export class ExternalAgentAuthorizationService {
     return true
   }
 
+  async getAgent(agentId: string): Promise<ExternalAgentRecord | null> {
+    return this.store.getAgent(agentId)
+  }
+
   async listAgents(): Promise<ExternalAgentRecord[]> {
     return this.store.listAgents()
   }

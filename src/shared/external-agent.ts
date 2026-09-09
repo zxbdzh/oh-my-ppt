@@ -12,6 +12,23 @@ export const COMPATIBLE_EXTERNAL_AGENT_PROTOCOL_VERSIONS = [
   EXTERNAL_AGENT_PROTOCOL_VERSION,
   '2026-08-15'
 ] as const
+export const EXTERNAL_AGENT_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000
+
+export type ExternalAgentConfirmationKind = 'delete_page' | 'delete_session' | 'overwrite_export'
+
+export interface ExternalAgentConfirmationPrompt {
+  operationId: string
+  agentId: string
+  agentName: string
+  kind: ExternalAgentConfirmationKind
+  sessionId?: string
+  sessionTitle?: string
+  pageId?: string
+  pageTitle?: string
+  pageNumber?: number
+  outputPath?: string
+  irreversible: boolean
+}
 
 export type ExternalAgentProtocolVersion =
   (typeof COMPATIBLE_EXTERNAL_AGENT_PROTOCOL_VERSIONS)[number]
@@ -678,7 +695,7 @@ export function buildDefaultCapabilitiesOutput(args?: {
         videos: ['mp4', 'webm', 'ogg'],
         documents: ['md', 'txt', 'text']
       },
-      confirmationTimeoutMs: 5 * 60 * 1000
+      confirmationTimeoutMs: EXTERNAL_AGENT_CONFIRMATION_TIMEOUT_MS
     }
   }
 }

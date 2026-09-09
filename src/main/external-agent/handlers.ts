@@ -1,6 +1,9 @@
 import { BrowserWindow, app, ipcMain } from 'electron'
-import type { ExternalAgentCapability } from '@shared/external-agent'
-import { EXTERNAL_AGENT_DEFAULT_CAPABILITIES } from '@shared/external-agent'
+import {
+  EXTERNAL_AGENT_DEFAULT_CAPABILITIES,
+  type ExternalAgentCapability,
+  type ExternalAgentConfirmationPrompt
+} from '@shared/external-agent'
 import type { ExternalAgentAuthorizationService } from './authorization'
 import type { ExternalAgentAuthPromptInput } from './broker'
 import { startExternalAgentHost, type ExternalAgentHost } from './host'
@@ -43,6 +46,14 @@ const pendingAuth = new Map<
   }
 >()
 
+const pendingConfirmations = new Map<
+  string,
+  {
+    payload: ExternalAgentConfirmationPrompt
+    resolve: (approved: boolean) => void
+  }
+>()
+
 function authPayload(input: ExternalAgentAuthPromptInput): {
   agentId: string
   name: string
@@ -68,6 +79,20 @@ export function createRendererAuthPrompt(
       window.show()
       window.focus()
       window.webContents.send('external-agent:auth-request', payload)
+    })
+}
+
+export function createRendererConfirmationPrompt(
+  getWindow: () => BrowserWindow | null
+): (input: ExternalAgentConfirmationPrompt) => Promise<boolean> {
+  return (input) =>
+    new Promise((resolve) => {
+      pendingConfirmations.set(input.operationId, { payload: input, resolve })
+      const window = getWindow()
+      if (!window || window.isDestroyed()) return
+      window.show()
+      window.focus()
+      window.webContents.send('external-agent:confirm-request', input)
     })
 }
 
@@ -98,6 +123,11 @@ export function registerExternalAgentHandlers(args: {
 
   ipcMain.handle('external-agent:pending-auth', async () => {
     const first = pendingAuth.values().next().value
+    return first?.payload ?? null
+  })
+
+  ipcMain.handle('external-agent:pending-confirm', async () => {
+    const first = pendingConfirmations.values().next().value
     return first?.payload ?? null
   })
 
@@ -153,6 +183,17 @@ export function registerExternalAgentHandlers(args: {
         sessionIds: payload.sessionIds,
         workspaceRoots: payload.workspaceRoots
       })
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle(
+    'external-agent:confirm-respond',
+    async (_event, payload: { operationId: string; approved: boolean }) => {
+      const pending = pendingConfirmations.get(payload.operationId)
+      if (!pending) return { success: false }
+      pendingConfirmations.delete(payload.operationId)
+      pending.resolve(payload.approved)
       return { success: true }
     }
   )

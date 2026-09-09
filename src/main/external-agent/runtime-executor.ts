@@ -1,10 +1,13 @@
 import type { GenerateStartPayload } from '@shared/generation'
 import type {
   CreateSessionInput,
+  DeletePageInput,
+  DeleteSessionInput,
   EditDeckInput,
   EditPageInput,
   ExportPptxInput,
   ExternalAgentBrokerRequest,
+  ImportAssetsInput,
   ImportPptxInput,
   StartGenerationInput
 } from '@shared/external-agent'
@@ -19,7 +22,10 @@ const EXECUTABLE_TOOLS = new Set([
   'edit_page',
   'edit_deck',
   'export_pptx',
-  'import_pptx'
+  'import_pptx',
+  'import_assets',
+  'delete_page',
+  'delete_session'
 ])
 
 export class ExternalAgentRuntimeExecutor {
@@ -140,6 +146,55 @@ export class ExternalAgentRuntimeExecutor {
         resultRef: result.sessionId,
         eventType: 'completed',
         payload: { sessionId: result.sessionId }
+      })
+      return false
+    }
+
+    if (record.toolName === 'delete_page') {
+      const input = this.toDeletePageInput(record)
+      await this.product.deletePage({ sessionId: input.sessionId, pageId: input.pageId })
+      await this.operations.transition({
+        operationId: record.id,
+        to: 'completed',
+        progress: 100,
+        resultRef: input.pageId,
+        eventType: 'completed',
+        payload: { sessionId: input.sessionId, pageId: input.pageId }
+      })
+      return false
+    }
+
+    if (record.toolName === 'delete_session') {
+      const input = this.toDeleteSessionInput(record)
+      await this.product.deleteSession({ sessionId: input.sessionId })
+      await this.operations.transition({
+        operationId: record.id,
+        to: 'completed',
+        progress: 100,
+        resultRef: input.sessionId,
+        eventType: 'completed',
+        payload: { sessionId: input.sessionId }
+      })
+      return false
+    }
+
+    if (record.toolName === 'import_assets') {
+      const input = this.toImportAssetsInput(record)
+      const result = await this.product.importAssets({
+        sessionId: input.sessionId,
+        sources: input.sources
+      })
+      await this.operations.transition({
+        operationId: record.id,
+        to: 'completed',
+        progress: 100,
+        resultRef: result.assets.map((asset) => asset.relativePath).join(','),
+        eventType: 'completed',
+        payload: {
+          relativePaths: result.assets.map((asset) => asset.relativePath),
+          kinds: result.assets.map((asset) => asset.kind),
+          originalNames: result.assets.map((asset) => asset.originalName)
+        }
       })
       return false
     }
@@ -299,6 +354,24 @@ export class ExternalAgentRuntimeExecutor {
   private toImportPptxInput(record: ExternalAgentOperationRecord): ImportPptxInput {
     const parsed = this.parseRequest(record)
     if (parsed.type !== 'import_pptx') throw new Error('operation 不是 import_pptx')
+    return parsed.input
+  }
+
+  private toImportAssetsInput(record: ExternalAgentOperationRecord): ImportAssetsInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'import_assets') throw new Error('operation 不是 import_assets')
+    return parsed.input
+  }
+
+  private toDeletePageInput(record: ExternalAgentOperationRecord): DeletePageInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'delete_page') throw new Error('operation 不是 delete_page')
+    return parsed.input
+  }
+
+  private toDeleteSessionInput(record: ExternalAgentOperationRecord): DeleteSessionInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'delete_session') throw new Error('operation 不是 delete_session')
     return parsed.input
   }
 }

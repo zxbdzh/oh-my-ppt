@@ -43,6 +43,7 @@ export interface ExternalAgentOperationStore {
   saveOperation(record: ExternalAgentOperationRecord): Promise<void>
   listQueued(sessionId?: string): Promise<ExternalAgentOperationRecord[]>
   listRunning(sessionId?: string): Promise<ExternalAgentOperationRecord[]>
+  listAwaitingConfirmation(): Promise<ExternalAgentOperationRecord[]>
   listActiveByAgent(agentId: string): Promise<ExternalAgentOperationRecord[]>
   appendEvent(event: ExternalAgentEventRecord): Promise<void>
   listEvents(
@@ -91,6 +92,12 @@ export class InMemoryExternalAgentOperationStore implements ExternalAgentOperati
         record.status === 'running' &&
         (sessionId ? record.sessionId === sessionId : !record.sessionId)
     )
+  }
+
+  async listAwaitingConfirmation(): Promise<ExternalAgentOperationRecord[]> {
+    return [...this.operations.values()]
+      .filter((record) => record.status === 'awaiting_confirmation')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   }
 
   async listActiveByAgent(agentId: string): Promise<ExternalAgentOperationRecord[]> {
@@ -155,7 +162,15 @@ const ALLOWED_TRANSITIONS: Record<ExternalAgentOperationStatus, ExternalAgentOpe
     'queued',
     'revoked'
   ],
-  awaiting_confirmation: ['running', 'rejected', 'expired', 'revoked', 'cancelled', 'interrupted'],
+  awaiting_confirmation: [
+    'queued',
+    'running',
+    'rejected',
+    'expired',
+    'revoked',
+    'cancelled',
+    'interrupted'
+  ],
   completed: [],
   partial: [],
   failed: [],
@@ -320,6 +335,10 @@ export class ExternalAgentOperationService {
 
   listRunning(sessionId?: string): Promise<ExternalAgentOperationRecord[]> {
     return this.store.listRunning(sessionId)
+  }
+
+  listAwaitingConfirmation(): Promise<ExternalAgentOperationRecord[]> {
+    return this.store.listAwaitingConfirmation()
   }
 
   async peekQueued(sessionId?: string): Promise<ExternalAgentOperationRecord | null> {

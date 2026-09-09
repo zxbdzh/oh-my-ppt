@@ -2,6 +2,7 @@ export const zh = {
   common: {
     cancel: '取消',
     delete: '删除',
+    overwrite: '覆盖',
     edit: '编辑',
     preview: '预览',
     save: '保存',
@@ -384,6 +385,19 @@ export const zh = {
     externalAgentAuthWorkspace: '工作区根目录',
     externalAgentAuthNoSessions: '还没有 Session，可先批准创建权限。',
     externalAgentApprove: '批准',
+    externalAgentConfirmDeletePageTitle: '确认删除页面',
+    externalAgentConfirmDeletePageDescription: '外部 Agent 请求删除该页面。批准后不可恢复。',
+    externalAgentConfirmDeleteSessionTitle: '确认删除 Session',
+    externalAgentConfirmDeleteSessionDescription:
+      '外部 Agent 请求删除整个 Session 及其文件。批准后不可恢复。',
+    externalAgentConfirmOverwriteTitle: '确认覆盖导出文件',
+    externalAgentConfirmOverwriteDescription:
+      '外部 Agent 请求覆盖已有 PPTX 文件。批准后原文件会被替换。',
+    externalAgentConfirmOverwriteAction: '覆盖',
+    externalAgentConfirmSession: 'Session',
+    externalAgentConfirmPage: '页面',
+    externalAgentConfirmPath: '目标文件',
+    externalAgentConfirmIrreversible: '此操作不可撤销。',
     usagePageEyebrow: 'Usage Analytics',
     usagePageTitle: 'Token 用量统计',
     usagePageDescription:

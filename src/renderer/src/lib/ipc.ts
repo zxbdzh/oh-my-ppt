@@ -50,7 +50,10 @@ import type { ExportProgressPayload } from '@shared/export-progress.js'
 import type { PageMergeDisabledReason } from '@shared/page-merge'
 import type { ModelUsagePeriod, ModelUsageStats } from '@shared/model-usage'
 import type { SlideSizePresetId } from '@shared/slide-size'
-import type { ExternalAgentCapability } from '@shared/external-agent'
+import type {
+  ExternalAgentCapability,
+  ExternalAgentConfirmationPrompt
+} from '@shared/external-agent'
 import type { ParsedChartDataResult } from '@shared/chart-data'
 import type { SessionMasterConfig, SessionMasterStatus } from '@shared/master'
 import type { SessionLayoutLibrary, SessionLayoutLibraryStatus } from '@shared/layout-master'
@@ -92,6 +95,8 @@ export interface ExternalAgentAuthOptions {
   sessions: Array<{ id: string; title: string }>
   defaultWorkspaceRoot: string
 }
+
+export type { ExternalAgentConfirmationPrompt }
 
 export interface StyleCategory {
   name: string
@@ -1146,6 +1151,10 @@ export const ipc = {
     getIpc().invoke('external-agent:bridge-command') as Promise<{ command: string }>,
   getPendingExternalAgentAuth: () =>
     getIpc().invoke('external-agent:pending-auth') as Promise<ExternalAgentAuthRequest | null>,
+  getPendingExternalAgentConfirmation: () =>
+    getIpc().invoke(
+      'external-agent:pending-confirm'
+    ) as Promise<ExternalAgentConfirmationPrompt | null>,
   getExternalAgentAuthOptions: () =>
     getIpc().invoke('external-agent:auth-options') as Promise<ExternalAgentAuthOptions>,
   listExternalAgents: () =>
@@ -1165,6 +1174,17 @@ export const ipc = {
     const channel = 'external-agent:auth-request'
     const handler = (_event: unknown, payload: unknown): void =>
       callback(payload as ExternalAgentAuthRequest)
+    getIpc().on(channel, handler)
+    return () => getIpc().removeListener(channel, handler)
+  },
+  respondExternalAgentConfirmation: (payload: { operationId: string; approved: boolean }) =>
+    getIpc().invoke('external-agent:confirm-respond', payload) as Promise<{ success: boolean }>,
+  onExternalAgentConfirmRequest: (
+    callback: (payload: ExternalAgentConfirmationPrompt) => void
+  ): (() => void) => {
+    const channel = 'external-agent:confirm-request'
+    const handler = (_event: unknown, payload: unknown): void =>
+      callback(payload as ExternalAgentConfirmationPrompt)
     getIpc().on(channel, handler)
     return () => getIpc().removeListener(channel, handler)
   },
