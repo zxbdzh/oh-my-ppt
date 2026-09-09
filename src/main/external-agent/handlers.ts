@@ -174,6 +174,31 @@ export function registerExternalAgentHandlers(args: {
   })
 
   ipcMain.handle(
+    'external-agent:update-grant',
+    async (
+      _event,
+      payload: { agentId: string; sessionIds: string[]; workspaceRoots: string[] }
+    ) => {
+      if (!payload?.agentId) return { success: false }
+      const updated = await args.auth.updateGrant(payload.agentId, {
+        sessionIds: payload.sessionIds,
+        workspaceRoots: payload.workspaceRoots
+      })
+      if (!updated) return { success: false }
+      if (updated.removedSessionIds.length > 0) {
+        const sessionIds = await args.operations.revokeAgentOperations(
+          payload.agentId,
+          updated.removedSessionIds
+        )
+        for (const sessionId of sessionIds) {
+          await args.executor.cancelProduct(sessionId)
+        }
+      }
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle(
     'external-agent:auth-respond',
     async (
       _event,

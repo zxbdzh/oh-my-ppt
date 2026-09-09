@@ -120,7 +120,10 @@ export function ExternalAgentAuthDialog(): React.JSX.Element {
                       checked={selectedSessionIds.includes(session.id)}
                       onChange={() => toggleSession(session.id)}
                     />
-                    <span className="truncate">{session.title}</span>
+                    <span className="min-w-0 truncate">{session.title}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                      {session.id.slice(0, 8)}
+                    </span>
                   </label>
                 ))
               )}

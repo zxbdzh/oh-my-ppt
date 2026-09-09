@@ -107,6 +107,28 @@ describe('external agent operation queue and events', () => {
     expect((await service.get(record.id))?.status).toBe('revoked')
   })
 
+  it('revokes only the sessions removed from a grant', async () => {
+    const keep = await service.enqueue({
+      agentId: 'pi',
+      sessionId: 'sess-keep',
+      toolName: 'start_generation',
+      idempotencyKey: 'k-keep',
+      requestHash: 'h-keep'
+    })
+    const drop = await service.enqueue({
+      agentId: 'pi',
+      sessionId: 'sess-drop',
+      toolName: 'export_pptx',
+      idempotencyKey: 'k-drop',
+      requestHash: 'h-drop'
+    })
+
+    const revoked = await service.revokeAgentOperations('pi', ['sess-drop'])
+    expect(revoked).toEqual(['sess-drop'])
+    expect((await service.get(drop.id))?.status).toBe('revoked')
+    expect((await service.get(keep.id))?.status).toBe('queued')
+  })
+
   it('rejects illegal status transitions', () => {
     expect(canTransition('completed', 'queued')).toBe(false)
     expect(canTransition('queued', 'running')).toBe(true)

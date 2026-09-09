@@ -1169,6 +1169,11 @@ export const ipc = {
     getIpc().invoke('external-agent:list') as Promise<ExternalAgentSummary[]>,
   revokeExternalAgent: (agentId: string) =>
     getIpc().invoke('external-agent:revoke', agentId) as Promise<{ success: boolean }>,
+  updateExternalAgentGrant: (payload: {
+    agentId: string
+    sessionIds: string[]
+    workspaceRoots: string[]
+  }) => getIpc().invoke('external-agent:update-grant', payload) as Promise<{ success: boolean }>,
   respondExternalAgentAuth: (payload: {
     agentId: string
     approved: boolean
