@@ -410,6 +410,11 @@ export const en = {
     externalAgentHowToDesktop1: 'Open the Claude Desktop mcpServers config',
     externalAgentHowToDesktop2: 'Paste the oh-my-ppt block and restart Claude Desktop',
     externalAgentHowToDesktop3: 'Return here to approve access',
+    externalAgentHowToScenario: 'Real workflow: edit a page, then export',
+    externalAgentHowToScenario1: 'Call get_session and copy the pageId to change',
+    externalAgentHowToScenario2: 'Call edit_page, then poll get_operation until completed',
+    externalAgentHowToScenario3:
+      'Call export_pptx into the workspace or the session exports folder',
     externalAgentCopyConfig: 'Copy config',
     externalAgentCopied: 'MCP config copied',
     externalAgentCopyFailed: 'Copy failed. Select the config and copy it manually.',
