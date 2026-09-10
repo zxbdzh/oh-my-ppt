@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron'
+import type { GenerateChunkEvent } from '@shared/generation'
 import type { PPTDatabase } from '../db/database'
 import type { AgentManager } from '../agent-runtime/agent'
 import { createIpcContext } from './context'
@@ -31,7 +32,7 @@ import { registerImageGenerationHandlers } from '../image-generation/handlers'
 import { registerImageGenerationHistoryHandlers } from '../image-generation/handlers-history'
 import { registerHtmlEditorHandlers } from '../html-editor/html-editor-handlers'
 import { registerHtmlEditorAiHandlers } from '../html-editor/html-editor-ai-handlers'
-import { JobCoordinator, TypedEventBus } from '../agent-runtime'
+import { JobCoordinator, TypedEventBus, type RuntimeEventEnvelope } from '../agent-runtime'
 import { RuntimeEventBridge } from './runtime/event-bridge'
 import { translateLegacyRuntimeEvent } from './runtime/event-contract'
 import { DbModelUsageRecorder } from './runtime/model-usage-recorder'
@@ -44,7 +45,6 @@ import { ExternalAgentAuthorizationService } from '../external-agent/authorizati
 import { ExternalAgentBroker } from '../external-agent/broker'
 import { ExternalAgentOperationService } from '../external-agent/operations'
 import { createIpcProductRuntime } from '../external-agent/product-runtime'
-import { bindExecutorToRuntimeChunks } from '../external-agent/event-map'
 import { ExternalAgentRuntimeExecutor } from '../external-agent/runtime-executor'
 import { createDatabaseBrokerDataSource } from '../external-agent/session-source'
 import { SqliteExternalAgentStore } from '../external-agent/sqlite-store'
@@ -118,14 +118,13 @@ export function setupIPC(
     ipcContext: context
   })
   const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
-  bindExecutorToRuntimeChunks(
-    (filter, listener) => {
-      runtimeEvents.subscribe(filter, listener)
-    },
-    (sessionId, chunk) => {
-      void executor.observeChunk(sessionId, chunk)
-    }
-  )
+  const forwardChunk = (event: RuntimeEventEnvelope): void => {
+    if (event.type !== 'generation.chunk' || !event.owner.sessionId) return
+    // page-edit / deck-edit 走 domain=edit，生成走 generation；都是 generation.chunk。
+    void executor.observeChunk(event.owner.sessionId, event.payload as GenerateChunkEvent)
+  }
+  runtimeEvents.subscribe({ domain: 'generation' }, forwardChunk)
+  runtimeEvents.subscribe({ domain: 'edit' }, forwardChunk)
   const broker = new ExternalAgentBroker(
     auth,
     createDatabaseBrokerDataSource(db),
