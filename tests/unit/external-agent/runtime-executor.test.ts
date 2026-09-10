@@ -27,6 +27,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const executor = new ExternalAgentRuntimeExecutor(operations, product)
@@ -75,6 +76,67 @@ describe('external agent runtime executor', () => {
     expect((await operations.get(running[0].id))?.status).toBe('completed')
   })
 
+  it('applies start_generation styleId and animationPreferences before generating', async () => {
+    const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
+    const product: ExternalAgentProductRuntime = {
+      startGeneration: vi.fn(async () => ({ success: true, runId: 'run-style', queued: false })),
+      startPageEdit: vi.fn(async () => ({ success: true, runId: 'run-edit' })),
+      startDeckEdit: vi.fn(async () => ({ success: true, runId: 'run-deck' })),
+      createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
+      cancelSession: vi.fn(async () => true)
+    }
+    const executor = new ExternalAgentRuntimeExecutor(operations, product)
+    const auth = new ExternalAgentAuthorizationService(
+      new InMemoryExternalAgentAuthorizationStore()
+    )
+    await auth.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1']
+    })
+    const broker = new ExternalAgentBroker(
+      auth,
+      {
+        async listAuthorizedSessions() {
+          return []
+        },
+        async getSessionWithPages() {
+          return null
+        }
+      },
+      '2.3.0',
+      operations,
+      executor
+    )
+
+    const created = await broker.handleRequest('pi', {
+      type: 'start_generation',
+      input: {
+        idempotencyKey: 'gen-style',
+        sessionId: 'sess-1',
+        topic: '极光演示',
+        styleId: 'aurora',
+        animationPreferences: { ids: ['fade', 'slide-up'] }
+      }
+    })
+    expect(created.ok).toBe(true)
+    await executor.kick('sess-1')
+    expect(product.applySessionStyle).toHaveBeenCalledWith('sess-1', 'aurora')
+    expect(product.startGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+        animationPreferences: { ids: ['fade', 'slide-up'] }
+      })
+    )
+  })
+
   it('requeues when JobCoordinator is already running and cancels the product session', async () => {
     const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
     const product: ExternalAgentProductRuntime = {
@@ -91,6 +153,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const executor = new ExternalAgentRuntimeExecutor(operations, product)
@@ -147,6 +210,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-create-'))
@@ -211,6 +275,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-create-default-'))
@@ -266,6 +331,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const auth = new ExternalAgentAuthorizationService(
@@ -340,6 +406,7 @@ describe('external agent runtime executor', () => {
       })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const auth = new ExternalAgentAuthorizationService(
@@ -402,6 +469,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const auth = new ExternalAgentAuthorizationService(
@@ -470,6 +538,7 @@ describe('external agent runtime executor', () => {
       importAssets: vi.fn(async () => ({ success: true, assets: [] })),
       deletePage: vi.fn(async () => ({ success: true })),
       deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
       cancelSession: vi.fn(async () => true)
     }
     const auth = new ExternalAgentAuthorizationService(

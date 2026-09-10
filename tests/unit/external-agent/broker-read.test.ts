@@ -96,6 +96,29 @@ describe('ExternalAgentBroker read flow', () => {
     }
   })
 
+  it('does not block other requests while the auth dialog is open', async () => {
+    const hanging = new ExternalAgentBroker(
+      authService,
+      dataSource,
+      '2.3.0',
+      undefined,
+      undefined,
+      () => new Promise(() => undefined)
+    )
+    const init = hanging.handleRequest('agent-new', {
+      type: 'initialize',
+      input: {
+        protocolVersion: EXTERNAL_AGENT_PROTOCOL_VERSION,
+        clientInfo: { name: 'claude-code', version: '1.0.0' }
+      }
+    })
+    const caps = hanging.handleRequest('agent-new', { type: 'get_capabilities', input: {} })
+    const initRes = await init
+    const capsRes = await caps
+    expect(initRes.ok).toBe(true)
+    expect(capsRes.ok).toBe(true)
+  })
+
   it('succeeds initialize with supported protocol version', async () => {
     const req: ExternalAgentBrokerRequest = {
       type: 'initialize',
