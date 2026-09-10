@@ -6,6 +6,7 @@ import {
   type SlideSizePreset,
   type SlideSizePresetId
 } from './slide-size'
+import { ANIMATION_PREFERENCE_ID_LIST } from './generation'
 
 export const EXTERNAL_AGENT_PROTOCOL_VERSION = '2026-09-04'
 export const COMPATIBLE_EXTERNAL_AGENT_PROTOCOL_VERSIONS = [
@@ -281,6 +282,7 @@ export const externalAgentCapabilitiesOutputSchema = z.strictObject({
     )
     .min(1),
   availableStyles: z.array(externalAgentStyleSummarySchema),
+  animationPreferenceIds: z.array(z.enum(ANIMATION_PREFERENCE_ID_LIST)).min(1),
   limits: z.strictObject({
     maxPptxImportSizeBytes: positiveIntegerSchema,
     maxAssetImportSizeBytes: positiveIntegerSchema,
@@ -389,7 +391,15 @@ export const startGenerationInputSchema = z.strictObject({
   pageCount: z.number().int().min(1).max(30).optional(),
   styleId: trimmedIdSchema.optional(),
   slideSizeId: z.string().trim().min(1).max(50).optional(),
-  reusedAssetPaths: z.array(relativeAssetRefSchema.shape.relativePath).max(50).optional()
+  reusedAssetPaths: z.array(relativeAssetRefSchema.shape.relativePath).max(50).optional(),
+  animationPreferences: z
+    .union([
+      z.strictObject({
+        ids: z.array(z.enum(ANIMATION_PREFERENCE_ID_LIST)).min(1).max(3)
+      }),
+      z.array(z.enum(ANIMATION_PREFERENCE_ID_LIST)).min(1).max(3)
+    ])
+    .optional()
 })
 export type StartGenerationInput = z.infer<typeof startGenerationInputSchema>
 
@@ -687,6 +697,7 @@ export function buildDefaultCapabilitiesOutput(args?: {
       height: preset.height
     })),
     availableStyles: args?.availableStyles ?? [],
+    animationPreferenceIds: [...ANIMATION_PREFERENCE_ID_LIST],
     limits: {
       maxPptxImportSizeBytes: 500 * 1024 * 1024,
       maxAssetImportSizeBytes: 20 * 1024 * 1024,

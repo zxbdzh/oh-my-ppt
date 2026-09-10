@@ -91,7 +91,13 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
         pageCount: { type: 'integer', minimum: 1, maximum: 30 },
         styleId: { type: 'string' },
         slideSizeId: { type: 'string' },
-        reusedAssetPaths: { type: 'array', items: { type: 'string' } }
+        reusedAssetPaths: { type: 'array', items: { type: 'string' } },
+        animationPreferences: {
+          type: 'object',
+          properties: {
+            ids: { type: 'array', items: { type: 'string' }, maxItems: 3 }
+          }
+        }
       },
       additionalProperties: false
     }

@@ -17,7 +17,8 @@ import {
   redactPageSnapshot,
   redactSessionSnapshot,
   relativeAssetRefSchema,
-  sanitizeErrorDetails
+  sanitizeErrorDetails,
+  startGenerationInputSchema
 } from '@shared/external-agent'
 
 describe('external agent shared contract', () => {
@@ -186,6 +187,16 @@ describe('external agent shared contract', () => {
     expect(capabilities.supportedSlideSizes.length).toBeGreaterThan(0)
     expect(capabilities.limits.maxPptxImportSizeBytes).toBe(500 * 1024 * 1024)
     expect(capabilities.availableStyles[0].id).toBe('modern')
+    expect(capabilities.animationPreferenceIds).toContain('fade')
+    expect(
+      startGenerationInputSchema.safeParse({
+        idempotencyKey: 'gen-1',
+        sessionId: 'sess-1',
+        topic: '极光演示',
+        styleId: 'aurora',
+        animationPreferences: { ids: ['fade', 'slide-up'] }
+      }).success
+    ).toBe(true)
   })
 
   it('redacts individual page snapshot with fallback and safe asset filtering', () => {

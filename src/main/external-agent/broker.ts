@@ -149,37 +149,32 @@ export class ExternalAgentBroker {
         )
       }
 
-      let access = await this.authService.checkAccess({ agentId })
+      const access = await this.authService.checkAccess({ agentId })
       const needsPrompt =
         !access.authorized &&
         Boolean(this.promptAuth) &&
         (access.error?.code === 'AUTH_REQUIRED' || access.error?.code === 'AUTH_REVOKED')
       if (needsPrompt && this.promptAuth) {
-        const decision = await this.promptAuth({
+        // Do not await the dialog. MCP clients time out, and a pending prompt would block this pipe.
+        void this.promptAuth({
           agentId,
           name: request.input.clientInfo.name,
           version: request.input.clientInfo.version,
           executablePath: request.input.clientInfo.executablePath
         })
-        if (!decision.approved) {
-          return fail(
-            createExternalAgentError({
-              code: 'AUTH_REQUIRED',
-              message: '用户拒绝了该 Agent 的首次授权',
-              details: { agentId }
+          .then(async (decision) => {
+            if (!decision.approved) return
+            await this.authService.grantInitial({
+              agentId,
+              name: request.input.clientInfo.name,
+              version: request.input.clientInfo.version,
+              executablePath: request.input.clientInfo.executablePath,
+              capabilities: decision.capabilities,
+              sessionIds: decision.sessionIds,
+              workspaceRoots: decision.workspaceRoots
             })
-          )
-        }
-        await this.authService.grantInitial({
-          agentId,
-          name: request.input.clientInfo.name,
-          version: request.input.clientInfo.version,
-          executablePath: request.input.clientInfo.executablePath,
-          capabilities: decision.capabilities,
-          sessionIds: decision.sessionIds,
-          workspaceRoots: decision.workspaceRoots
-        })
-        access = await this.authService.checkAccess({ agentId })
+          })
+          .catch(() => undefined)
       } else if (access.authorized) {
         await this.authService.touchLastUsed(agentId)
       }

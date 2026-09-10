@@ -40,7 +40,9 @@ const TOOLS = [
       sessionId: { type: 'string' },
       topic: { type: 'string' },
       prompt: { type: 'string' },
-      pageCount: { type: 'integer' }
+      pageCount: { type: 'integer' },
+      styleId: { type: 'string' },
+      animationPreferences: { type: 'object' }
     },
     ['idempotencyKey', 'sessionId', 'topic']
   ],
@@ -183,9 +185,8 @@ function connectPipe() {
   })
 }
 
-function callBroker(socket, agentId, request) {
+function callBroker(socket, agentId, request, timeoutMs = 12000) {
   const id = `mcp-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  socket.write(`${JSON.stringify({ id, agentId, request })}\n`)
   return new Promise((resolve, reject) => {
     let leftover = ''
     const onData = (buffer) => {
@@ -197,17 +198,31 @@ function callBroker(socket, agentId, request) {
         try {
           const parsed = JSON.parse(part)
           if (parsed.id !== id) continue
-          socket.off('data', onData)
+          cleanup()
           resolve(parsed.response)
           return
         } catch (error) {
-          socket.off('data', onData)
+          cleanup()
           reject(error)
         }
       }
     }
+    const onError = (error) => {
+      cleanup()
+      reject(error)
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('Oh My PPT 在 12 秒内没有响应，请确认应用已打开并批准授权弹窗'))
+    }, timeoutMs)
+    const cleanup = () => {
+      clearTimeout(timer)
+      socket.off('data', onData)
+      socket.off('error', onError)
+    }
     socket.on('data', onData)
-    socket.once('error', reject)
+    socket.once('error', onError)
+    socket.write(`${JSON.stringify({ id, agentId, request })}\n`)
   })
 }
 
@@ -285,11 +300,15 @@ process.stdin.on('data', (chunk) => {
           rpcError(id, 'APP_NOT_RUNNING', 'Oh My PPT 桌面应用未在运行，请先启动应用')
           continue
         }
-        const response = await callBroker(socket, agentId, { type: name, input: args })
-        rpcResult(id, {
-          content: [{ type: 'text', text: JSON.stringify(response) }],
-          isError: Boolean(response && response.ok === false)
-        })
+        try {
+          const response = await callBroker(socket, agentId, { type: name, input: args })
+          rpcResult(id, {
+            content: [{ type: 'text', text: JSON.stringify(response) }],
+            isError: Boolean(response && response.ok === false)
+          })
+        } catch (error) {
+          rpcError(id, 'BROKER_UNAVAILABLE', error instanceof Error ? error.message : String(error))
+        }
         continue
       }
       rpcError(id, 'VALIDATION_FAILED', `不支持的 MCP 方法: ${parsed.method ?? ''}`)

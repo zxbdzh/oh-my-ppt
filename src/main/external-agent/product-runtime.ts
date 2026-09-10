@@ -12,6 +12,7 @@ import { writeSessionPptx } from '../io/pptx-export'
 import { importPptxToSession } from '../io/pptx-import/import-session'
 import { resolveAssetUploadTarget } from '../ipc/runtime/local-files'
 import type { IpcContext } from '../ipc/context'
+import { resolveUsableStyleId } from '../styles/catalog'
 
 export type ExternalAgentProductStartResult = {
   success: boolean
@@ -65,6 +66,7 @@ export interface ExternalAgentProductRuntime {
   deletePage(payload: { sessionId: string; pageId: string }): Promise<{ success: boolean }>
   deleteSession(payload: { sessionId: string }): Promise<{ success: boolean }>
   cancelSession(sessionId: string): Promise<boolean>
+  applySessionStyle(sessionId: string, styleId: string): Promise<void>
 }
 
 // SAFETY: resolveDeckContext / page-edit start ignore the IPC event object.
@@ -154,6 +156,10 @@ export function createIpcProductRuntime(args: {
       if (await args.pageEditJobs.cancel(sessionId)) return true
       if (await args.deckEditJobs.cancel(sessionId)) return true
       return args.jobManager.cancel(sessionId)
+    },
+    applySessionStyle: async (sessionId, styleId) => {
+      const resolved = resolveUsableStyleId(styleId)
+      await args.ipcContext.db.updateSessionStyleId(sessionId, resolved)
     }
   }
 }

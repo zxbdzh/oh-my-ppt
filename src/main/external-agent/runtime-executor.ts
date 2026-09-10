@@ -1,4 +1,4 @@
-import type { GenerateStartPayload } from '@shared/generation'
+import { normalizeAnimationPreferences, type GenerateStartPayload } from '@shared/generation'
 import type {
   CreateSessionInput,
   DeletePageInput,
@@ -199,6 +199,12 @@ export class ExternalAgentRuntimeExecutor {
       return false
     }
 
+    if (record.toolName === 'start_generation') {
+      const generationInput = this.toStartGenerationInput(record)
+      if (generationInput.styleId) {
+        await this.product.applySessionStyle(generationInput.sessionId, generationInput.styleId)
+      }
+    }
     const payload = this.toGeneratePayload(record)
     const result =
       record.toolName === 'start_generation'
@@ -293,7 +299,8 @@ export class ExternalAgentRuntimeExecutor {
         chatType: 'main',
         imagePaths,
         videoPaths,
-        docPaths
+        docPaths,
+        animationPreferences: normalizeAnimationPreferences(input.animationPreferences) ?? undefined
       }
     }
     if (parsed.type === 'edit_page') {
@@ -337,6 +344,12 @@ export class ExternalAgentRuntimeExecutor {
     } catch {
       throw new Error('operation 缺少可执行请求')
     }
+  }
+
+  private toStartGenerationInput(record: ExternalAgentOperationRecord): StartGenerationInput {
+    const parsed = this.parseRequest(record)
+    if (parsed.type !== 'start_generation') throw new Error('operation 不是 start_generation')
+    return parsed.input
   }
 
   private toCreateSessionInput(record: ExternalAgentOperationRecord): CreateSessionInput {
