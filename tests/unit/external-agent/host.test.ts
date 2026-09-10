@@ -131,9 +131,17 @@ describe('external agent host', () => {
     expect(first.ok).toBe(true)
     if (first.ok) {
       const data = first.data as { authenticated: boolean }
-      expect(data.authenticated).toBe(true)
+      expect(data.authenticated).toBe(false)
     }
     expect(prompt).toHaveBeenCalledTimes(1)
+    await vi.waitFor(async () => {
+      const granted = await auth.checkAccess({
+        agentId: 'pi',
+        capability: 'read',
+        sessionId: 'sess-1'
+      })
+      expect(granted.authorized).toBe(true)
+    })
 
     const access = await auth.checkAccess({
       agentId: 'pi',
@@ -164,7 +172,10 @@ describe('external agent host', () => {
     })
     expect(third.ok).toBe(true)
     expect(prompt).toHaveBeenCalledTimes(2)
-    expect((await auth.checkAccess({ agentId: 'pi', sessionId: 'sess-1' })).authorized).toBe(true)
+    await vi.waitFor(async () => {
+      const restored = await auth.checkAccess({ agentId: 'pi', sessionId: 'sess-1' })
+      expect(restored.authorized).toBe(true)
+    })
   })
 
   it('rejects initialize when the user denies first-run authorization', async () => {
@@ -193,8 +204,13 @@ describe('external agent host', () => {
         clientInfo: { name: 'pi', version: '1.0.0' }
       }
     })
-    expect(res.ok).toBe(false)
-    if (!res.ok) expect(res.error.code).toBe('AUTH_REQUIRED')
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      const data = res.data as { authenticated: boolean }
+      expect(data.authenticated).toBe(false)
+    }
+    const access = await auth.checkAccess({ agentId: 'pi', sessionId: 'sess-1' })
+    expect(access.authorized).toBe(false)
   })
 
   it('serves NDJSON broker requests on the local endpoint', async () => {
