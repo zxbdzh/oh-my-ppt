@@ -586,4 +586,63 @@ describe('external agent runtime executor', () => {
     expect(record?.status).toBe('completed')
     expect(record?.resultRef).toBe(outputPath)
   })
+
+  it('completes edit_page when run_completed chunk arrives', async () => {
+    const operations = new ExternalAgentOperationService(new InMemoryExternalAgentOperationStore())
+    const product: ExternalAgentProductRuntime = {
+      startGeneration: vi.fn(async () => ({ success: true })),
+      startPageEdit: vi.fn(async () => ({ success: true, runId: 'run-edit' })),
+      startDeckEdit: vi.fn(async () => ({ success: true })),
+      createSession: vi.fn(async () => ({ success: true, sessionId: 'sess-new' })),
+      exportPptx: vi.fn(async () => ({ success: true, outputPath: 'F:\\out\\deck.pptx' })),
+      importPptx: vi.fn(async () => ({ success: true, sessionId: 'sess-imported' })),
+      importAssets: vi.fn(async () => ({ success: true, assets: [] })),
+      deletePage: vi.fn(async () => ({ success: true })),
+      deleteSession: vi.fn(async () => ({ success: true })),
+      applySessionStyle: vi.fn(async () => undefined),
+      cancelSession: vi.fn(async () => true)
+    }
+    const auth = new ExternalAgentAuthorizationService(
+      new InMemoryExternalAgentAuthorizationStore()
+    )
+    await auth.grantInitial({
+      agentId: 'pi',
+      name: 'pi',
+      version: '1.0.0',
+      sessionIds: ['sess-1']
+    })
+    const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
+    const broker = new ExternalAgentBroker(
+      auth,
+      {
+        async listAuthorizedSessions() {
+          return []
+        },
+        async getSessionWithPages() {
+          return null
+        }
+      },
+      '2.3.0',
+      operations,
+      executor
+    )
+    const created = await broker.handleRequest('pi', {
+      type: 'edit_page',
+      input: {
+        idempotencyKey: 'edit-1',
+        sessionId: 'sess-1',
+        pageId: 'page-1',
+        instruction: '把副标题改短'
+      }
+    })
+    expect(created.ok).toBe(true)
+    await executor.kick('sess-1')
+    const running = await operations.listRunning('sess-1')
+    expect(running).toHaveLength(1)
+    await executor.observeChunk('sess-1', {
+      type: 'run_completed',
+      payload: { runId: 'run-edit', totalPages: 1, completedPageCount: 1, failedPageCount: 0 }
+    })
+    expect((await operations.get(running[0].id))?.status).toBe('completed')
+  })
 })

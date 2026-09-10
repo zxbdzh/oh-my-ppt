@@ -82,3 +82,25 @@ export function mapGenerateChunkToExternalEvent(chunk: GenerateChunkEvent): {
   }
   return null
 }
+
+export type ExecutorRuntimeChunkEvent = {
+  type: string
+  owner?: { sessionId?: string }
+  payload: unknown
+}
+
+export function bindExecutorToRuntimeChunks(
+  subscribe: (
+    filter: { domain: 'generation' | 'edit' },
+    listener: (event: ExecutorRuntimeChunkEvent) => void
+  ) => void,
+  observeChunk: (sessionId: string, chunk: GenerateChunkEvent) => void
+): void {
+  const forward = (event: ExecutorRuntimeChunkEvent): void => {
+    if (event.type !== 'generation.chunk' || !event.owner?.sessionId) return
+    void observeChunk(event.owner.sessionId, event.payload as GenerateChunkEvent)
+  }
+  // page-edit / deck-edit 走 domain=edit，生成走 generation；都是 generation.chunk。
+  subscribe({ domain: 'generation' }, forward)
+  subscribe({ domain: 'edit' }, forward)
+}

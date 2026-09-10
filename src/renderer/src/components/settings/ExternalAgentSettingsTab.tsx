@@ -236,6 +236,14 @@ function McpHowTo({ t }: { t: SettingsTranslate }): React.JSX.Element {
         t('settings.externalAgentHowToDesktop2'),
         t('settings.externalAgentHowToDesktop3')
       ]
+    },
+    {
+      title: t('settings.externalAgentHowToScenario'),
+      steps: [
+        t('settings.externalAgentHowToScenario1'),
+        t('settings.externalAgentHowToScenario2'),
+        t('settings.externalAgentHowToScenario3')
+      ]
     }
   ]
 

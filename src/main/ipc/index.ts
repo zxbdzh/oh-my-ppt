@@ -1,5 +1,4 @@
 import { app, BrowserWindow } from 'electron'
-import type { GenerateChunkEvent } from '@shared/generation'
 import type { PPTDatabase } from '../db/database'
 import type { AgentManager } from '../agent-runtime/agent'
 import { createIpcContext } from './context'
@@ -45,6 +44,7 @@ import { ExternalAgentAuthorizationService } from '../external-agent/authorizati
 import { ExternalAgentBroker } from '../external-agent/broker'
 import { ExternalAgentOperationService } from '../external-agent/operations'
 import { createIpcProductRuntime } from '../external-agent/product-runtime'
+import { bindExecutorToRuntimeChunks } from '../external-agent/event-map'
 import { ExternalAgentRuntimeExecutor } from '../external-agent/runtime-executor'
 import { createDatabaseBrokerDataSource } from '../external-agent/session-source'
 import { SqliteExternalAgentStore } from '../external-agent/sqlite-store'
@@ -118,11 +118,14 @@ export function setupIPC(
     ipcContext: context
   })
   const executor = new ExternalAgentRuntimeExecutor(operations, product, auth)
-  runtimeEvents.subscribe({ domain: 'generation' }, (event) => {
-    if (event.type !== 'generation.chunk' || !event.owner.sessionId) return
-    // SAFETY: envelope generic does not narrow payload after the type check.
-    executor.observeChunk(event.owner.sessionId, event.payload as GenerateChunkEvent)
-  })
+  bindExecutorToRuntimeChunks(
+    (filter, listener) => {
+      runtimeEvents.subscribe(filter, listener)
+    },
+    (sessionId, chunk) => {
+      void executor.observeChunk(sessionId, chunk)
+    }
+  )
   const broker = new ExternalAgentBroker(
     auth,
     createDatabaseBrokerDataSource(db),
